@@ -29,10 +29,23 @@ public class CuratorApplication {
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "application_status", nullable = false)
+    private ApplicationStatus applicationStatus;
+
 
     // Getters and setters
 
-    public Integer getApplicationId() {
+    public ApplicationStatus getApplicationStatus() {
+		return applicationStatus;
+	}
+
+	public void setApplicationStatus(ApplicationStatus applicationStatus) {
+		this.applicationStatus = applicationStatus;
+	}
+
+	public Integer getApplicationId() {
         return applicationId;
     }
 

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Curator Application Status</title>
+</head>
+<body>
+
+<h2>Curator Application Status</h2>
+
+<!-- Success message -->
+<p th:if="${success}" th:text="${success}" style="color:green;"></p>
+
+<!-- Info message (e.g. already a curator) -->
+<p th:if="${info}" th:text="${info}" style="color:blue;"></p>
+
+<!-- Warning message (e.g. already applied) -->
+<p th:if="${warning}" th:text="${warning}" style="color:orange;"></p>
+
+<!-- Error message -->
+<p th:if="${error}" th:text="${error}" style="color:red;"></p>
+
+<a href="/dashboard" style="display:block; margin-top: 20px;">Return to Home</a>
+
+</body>
+</html>
