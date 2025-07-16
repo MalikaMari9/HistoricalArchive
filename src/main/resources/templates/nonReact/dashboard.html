@@ -5,5 +5,6 @@
 <body>
     <h2>Welcome, <span th:text="${username}"></span>!</h2>
     <a href="/logout">Logout</a>
+    <button class="profile-btn" th:onclick="'window.location.href=\'/profile/' + ${session.loggedInUser.userId} + '\';'">Manage Profile</button>
 </body>
 </html>
