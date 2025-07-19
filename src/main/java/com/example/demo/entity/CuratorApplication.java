@@ -34,10 +34,21 @@ public class CuratorApplication {
     @Column(name = "application_status", nullable = false)
     private ApplicationStatus applicationStatus;
 
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
 
     // Getters and setters
 
-    public ApplicationStatus getApplicationStatus() {
+    public String getRejectionReason() {
+		return rejectionReason;
+	}
+
+	public void setRejectionReason(String rejectionReason) {
+		this.rejectionReason = rejectionReason;
+	}
+
+	public ApplicationStatus getApplicationStatus() {
 		return applicationStatus;
 	}
 

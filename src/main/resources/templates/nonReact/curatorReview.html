@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Review Curator curapplication</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h2>Curator curapplication Review12</h2>
+    <pre th:text="${curapplication}">[App dump]</pre>
+    
+
+    <!-- Optional null check -->
+    <div th:if="${curapplication == null}">
+        <p><strong>curapplication is null!</strong></p>
+    </div>
+
+    <div th:if="${curapplication != null}">
+        <p><strong>Name:</strong> <span th:text="${curapplication.fname} + ' ' + ${curapplication.lname}">[Name]</span></p>
+        <p><strong>DOB:</strong> <span th:text="${curapplication.dob}">[DOB]</span></p>
+        <p><strong>Certification:</strong> <span th:text="${curapplication.certification}">[Certification]</span></p>
+        <p><strong>Certification File:</strong>
+            <a th:href="${curapplication.certificationPath}" target="_blank">View Certificate</a>
+        </p>
+
+        <form th:action="@{/professor/review/{id}(id=${curapplication.applicationId})}" method="post">
+            <label for="reason">Rejection Reason (if rejecting):</label><br>
+            <textarea id="reason" name="reason" rows="4" cols="50"></textarea><br><br>
+
+            <button type="submit" name="action" value="approve">✅ Approve</button>
+            <button type="submit" name="action" value="reject">❌ Reject</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Notifications</title>
+    <style>
+        .unread {
+            font-weight: bold;
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-left: 4px solid #888;
+            margin-bottom: 8px;
+        }
+        .read {
+            background-color: #ffffff;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+        a.noti-link {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h2>Your Notifications</h2>
+
+    <div th:if="${notifications.isEmpty()}">
+        <p>No notifications.</p>
+    </div>
+
+    <ul style="list-style: none; padding: 0;">
+        <li th:each="noti : ${notifications}"
+            th:classappend="${noti.read} ? 'read' : 'unread'">
+            <a th:href="@{'/notifications/mark-read/' + ${noti.notiId}}" class="noti-link">
+                <strong th:text="${noti.notificationType}">[Type]</strong> - 
+                <span th:text="${noti.message}">Message</span><br>
+                <small th:text="${#temporals.format(noti.createdAt, 'yyyy-MM-dd HH:mm')}">Time</small>
+            </a>
+        </li>
+    </ul>
+</body>
+</html>
