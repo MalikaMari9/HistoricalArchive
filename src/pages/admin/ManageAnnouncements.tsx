@@ -59,12 +59,15 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
+import { useNavigate } from "react-router-dom";
 // Remove the interface and sample data - we'll use AnnouncementDto from API
 
 const ITEMS_PER_PAGE = 5;
 
 export default function ManageAnnouncements() {
+    const navigate = useNavigate();
+  const { user, ready } = useAuthGuard();
   const [currentPage, setCurrentPage] = useState(1);
   const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +85,16 @@ export default function ManageAnnouncements() {
   useEffect(() => {
     loadAnnouncements();
   }, []);
+
+     useEffect(() => {
+    if (!ready) return;
+
+    if (!user) {
+      navigate("/signin", { replace: true });
+    } else if (user.role !== "admin") {
+      navigate("/403", { replace: true });
+    }
+  }, [ready, user, navigate]);
 
   const loadAnnouncements = async () => {
     try {

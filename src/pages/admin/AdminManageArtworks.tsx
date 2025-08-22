@@ -26,15 +26,17 @@ import {
 import { ArrowLeft, Eye, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 export const ManageArtworks = () => {
   const navigate = useNavigate();
+    const { user, ready } = useAuthGuard();
   const [pageIndex, setPageIndex] = useState(1); // 1-based for UI
   const [pageSize] = useState(10);
   const [data, setData] = useState<PageResponse<AdminArtworkDto> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
 
   const loadPage = async (uiPage: number) => {
     setLoading(true);
@@ -49,6 +51,17 @@ export const ManageArtworks = () => {
     }
   };
 
+
+
+     useEffect(() => {
+    if (!ready) return;
+
+    if (!user) {
+      navigate("/signin", { replace: true });
+    } else if (user.role !== "admin") {
+      navigate("/403", { replace: true });
+    }
+  }, [ready, user, navigate]);
   useEffect(() => {
     loadPage(pageIndex);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   getMyPublicProfile,
   listNotifications,
@@ -62,7 +62,7 @@ function buildVisitLink(n: NotificationDto, userRole: UserRole): string | null {
       }
       if (n.relatedId) {
         // public artifact page by Mongo artifact id
-        return `/artifacts/${n.relatedId}`;
+        return `/artwork/${n.relatedId}`;
       }
     }
   }
@@ -73,7 +73,7 @@ function buildVisitLink(n: NotificationDto, userRole: UserRole): string | null {
     (n.notificationType === "ARTIFACT_ACCEPTED" || n.notificationType === "ARTIFACT_REJECTED") &&
     n.relatedId
   ) {
-    return `/artifacts/${n.relatedId}`;
+    return `/artwork/${n.relatedId}`;
   }
 
   return null;
@@ -83,7 +83,7 @@ function buildVisitLink(n: NotificationDto, userRole: UserRole): string | null {
 
 export const Notifications = () => {
   const navigate = useNavigate();
-
+ const { user, ready } = useAuthGuard();
   const [role, setRole] = useState<UserRole>("visitor");
   const [items, setItems] = useState<NotificationDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +95,11 @@ export const Notifications = () => {
 
   // Load role + notifications
   useEffect(() => {
+     if (!ready) return;               // wait until auth resolved
+    if (!user) return;                // useAuthGuard already redirected
+
+    // Use role from context (no extra API call)
+    setRole(user.role as UserRole);
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;

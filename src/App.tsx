@@ -57,6 +57,8 @@ import ArtworkDetail from "./pages/artifacts/ArtworkDetail";
 
 // --- Axios Config ---
 axios.defaults.withCredentials = true;
+import { AuthProvider } from '@/hooks/useAuth';
+
 
 // --- React Query Client ---
 
@@ -73,6 +75,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+       <AuthProvider>
         <Routes>
           {/* Main Website Routes */}
           <Route path="/" element={<DashboardLayout />}>
@@ -142,6 +145,7 @@ const App = () => (
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

@@ -3,10 +3,10 @@ import { ArrowLeft, Heart, Bookmark as BookmarkIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArtCard } from "@/components/gallery/ArtCard";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
+
 import { useToast } from "@/components/ui/use-toast";
 import { ArtifactImage } from "@/pages/artifacts/Gallery";
-
+import { useAuth } from "@/hooks/useAuth";
 // Centralized API helpers
 import {
   listBookmarks,
@@ -39,7 +39,8 @@ type ArtifactSummary = {
 
 export default function Bookmarks() {
   const navigate = useNavigate();
-  const { currentUser } = useCurrentUser();
+const { user, isAuthenticated, loading: authLoading } = useAuth();
+
   const { toast } = useToast();
   const [bookmarkedArtworks, setBookmarkedArtworks] = useState<ArtifactSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,10 +97,10 @@ export default function Bookmarks() {
       }
     };
 
-    if (currentUser) fetchBookmarks();
+    if (user && isAuthenticated) fetchBookmarks();
 
     return () => controller.abort();
-  }, [currentUser, toast]);
+}, [user, isAuthenticated, toast]);
 
   const handleToggleBookmark = async (artifactId: string) => {
     try {

@@ -45,10 +45,23 @@ public class User {
 
     @Column(name = "is_restricted", nullable = false)
     private boolean restricted = false;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private UserStatus status = UserStatus.ACTIVE;
+
 
     // Getters and setters
 
-    public Integer getUserId() {
+    public UserStatus getStatus() {
+		return status;
+	}
+
+	public void setStatus(UserStatus status) {
+		this.status = status;
+	}
+
+	public Integer getUserId() {
         return userId;
     }
 

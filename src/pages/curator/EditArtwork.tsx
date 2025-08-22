@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { getArtifactById, updateArtifact, ArtifactDetail } from '@/services/api';
-
+import { useAuthGuard } from '@/hooks/useAuthGuard'; 
+import { useAuth } from '@/hooks/useAuth'; 
 type FormValues = {
   title: string;
   category: string;
@@ -22,6 +23,8 @@ type FormValues = {
 };
 
 export const EditArtwork = () => {
+  useAuthGuard();
+
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -91,6 +94,8 @@ export const EditArtwork = () => {
     }
   };
 
+  
+
   const imagePreview = useMemo(() => {
     const val = watch('image_url');
     return val?.trim() || '';
@@ -99,6 +104,19 @@ export const EditArtwork = () => {
   if (loading) {
     return <div className="p-6 text-center text-lg">Loading artwork details...</div>;
   }
+
+
+
+const { user, ready } = useAuthGuard();
+
+
+useEffect(() => {
+  if (ready && user.role === "visitor") {
+    navigate("/403");
+  }
+}, [ready, user, navigate]);
+
+
 
   return (
     <div className="container mx-auto p-6">

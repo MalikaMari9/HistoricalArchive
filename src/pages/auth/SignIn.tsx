@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +14,9 @@ import { Separator } from "@/components/ui/separator";
 import { Eye, EyeOff, Mail, Lock, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import logo from "@/assets/logo.jpg";
-import { getMe, login } from "@/services/api";
+import { getMe, login as loginAPI } from "@/services/api"; // ✅ rename to avoid conflict
+import { useAuth } from "@/hooks/useAuth";
+import axios from "axios";
 
 type Role = "admin" | "professor" | "curator" | "visitor";
 
@@ -25,6 +31,7 @@ export default function SignIn() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { login: setUserContext } = useAuth(); // ✅ clear naming
 
   const [formData, setFormData] = useState({ username: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
@@ -39,7 +46,6 @@ export default function SignIn() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // rudimentary caps lock detection for password usability
       if (e.getModifierState) setCapsOn(e.getModifierState("CapsLock"));
     };
     window.addEventListener("keydown", onKey);
@@ -51,7 +57,7 @@ export default function SignIn() {
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((p) => ({ ...p, [e.target.name]: e.target.value }));
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const safeRouteByRole = (role: unknown): string => {
@@ -65,36 +71,40 @@ export default function SignIn() {
     setIsLoading(true);
 
     try {
-      await login({ username: formData.username, password: formData.password });
+      // ✅ Step 1: Authenticate with backend
+      await loginAPI({
+        username: formData.username,
+        password: formData.password,
+      });
 
-      // fetch current session user
-      const me = await getMe();
+      // ✅ Step 2: Fetch user info
+      const userInfo = await getMe();
 
-      // let any global listeners refresh (e.g., navbar auth)
-      window.dispatchEvent(new Event("auth:changed"));
+      // ✅ Step 3: Set in context
+      await setUserContext(userInfo);
+
+      const userRole = (userInfo?.role || "visitor") as Role;
+      const roleRoute = safeRouteByRole(userRole);
 
       toast({
         title: "Welcome back!",
-        description: "You have successfully signed in.",
+        description: `Logged in as ${userRole}`,
       });
 
-      const roleRoute = safeRouteByRole(me?.role);
-      // honor ?next= if provided (and not pointing back to /signin)
-      const dest =
-        nextPath && !/\/signin$/i.test(nextPath) ? nextPath : roleRoute;
+      const dest = nextPath && !/\/signin$/i.test(nextPath) ? nextPath : roleRoute;
 
-      // tiny delay so toast is visible before route change
-      setTimeout(() => navigate(dest, { replace: true }), 500);
+      setTimeout(() => {
+        navigate(dest, { replace: true });
+      }, 500);
     } catch (err: any) {
-      // normalize error messages
       let description = "An unknown error occurred.";
       if (err?.response) {
         const status = err.response.status;
         if (typeof err.response.data === "string") description = err.response.data;
         else if (err.response.data?.message) description = err.response.data.message;
         else if (status === 401) description = "Invalid credentials.";
-        else if (status === 403) description = "You don't have access to this resource.";
-        else if (status >= 500) description = "Server error. Please try again later.";
+        else if (status === 403) description = "Access forbidden.";
+        else if (status >= 500) description = "Server error. Try again later.";
       } else if (err?.message === "Network Error") {
         description = "Network error. Check your connection.";
       }

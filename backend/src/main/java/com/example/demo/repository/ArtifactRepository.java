@@ -85,6 +85,9 @@ public interface ArtifactRepository extends MongoRepository<Artifact, String>, C
             return 0;
         }
     }
+    
+    @Query("{ 'uploaded_by' : ?0 }")
+    List<Artifact> findByUploaded_by(String username);
 
     @Query("{ 'uploaded_by' : ?0 }")
 	Page<Artifact> findByUploaded_by(String username, Pageable pageable);

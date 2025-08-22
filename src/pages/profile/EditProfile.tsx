@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -34,6 +34,7 @@ const PLACEHOLDER_AVATAR = null as string | null; // null => AvatarFallback
 /* ------------------------------- Component -------------------------------- */
 
 export default function EditProfile() {
+  useAuthGuard();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -188,6 +189,7 @@ export default function EditProfile() {
 
       toast({ title: "Success", description: "Profile updated successfully!" });
       navigate("/profile");
+      setTimeout(() => window.location.reload(), 100);
     } catch (err: any) {
       toast({
         title: "Error",

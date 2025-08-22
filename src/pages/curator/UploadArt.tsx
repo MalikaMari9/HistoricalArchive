@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { AutocompleteInput } from "@/components/gallery/AutocompleteInput";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   fetchCategorySuggestions,
   fetchCultureSuggestions,
@@ -40,6 +41,7 @@ interface UploadFormData {
 }
 
 export default function UploadArtifact() {
+   const { user, ready } = useAuthGuard();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -70,6 +72,12 @@ export default function UploadArtifact() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+// Restrict Visitors
+useEffect(() => {
+  if (ready && user.role === "visitor") {
+    navigate("/403");
+  }
+}, [ready, user, navigate]);
 
   // On mount: check session + load suggestions
   useEffect(() => {
@@ -230,6 +238,7 @@ export default function UploadArtifact() {
       setIsSubmitting(false);
     }
   };
+  // Restrict Visitors
 
   return (
     <div className="min-h-screen bg-background">

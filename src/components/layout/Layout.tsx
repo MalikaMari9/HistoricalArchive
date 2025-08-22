@@ -1,20 +1,20 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
+import { useAuth } from '@/hooks/useAuth';
 
-interface LayoutProps {
-  userRole?: 'visitor' | 'curator' | 'professor' | 'admin';
-  isAuthenticated?: boolean;
-}
-
-export const Layout = ({ userRole = 'visitor', isAuthenticated = false }: LayoutProps) => {
+export const DashboardLayout = () => {
   const location = useLocation();
-  
-  // Hide navbar and footer for auth forms and other specific pages
+  const { isAuthenticated, user, loading } = useAuth();
+
+  // Optional: render nothing while session is still loading
+  if (loading) return null;
+
+  // Pages where we hide navbar/footer (auth forms, etc.)
   const hideNavAndFooter = [
-    '/signin', 
-    '/signup', 
-    '/forgot-password', 
+    '/signin',
+    '/signup',
+    '/forgot-password',
     '/change-password',
     '/profile',
     '/profile/edit',
@@ -24,13 +24,8 @@ export const Layout = ({ userRole = 'visitor', isAuthenticated = false }: Layout
 
   return (
     <div className="min-h-screen bg-background">
-      {!hideNavAndFooter && (
-        <Navbar 
-          isAuthenticated={isAuthenticated}
-          userRole={userRole}
-        />
-      )}
-      
+      {!hideNavAndFooter && <Navbar />}
+
       <main className="relative">
         <Outlet />
       </main>

@@ -4,6 +4,7 @@ import { Menu, User, Heart, Search, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import logo from '@/assets/logo.jpg';
+import { useAuth } from "@/hooks/useAuth";
 
 interface UserProfile {
   username: string;
@@ -21,54 +22,19 @@ const AUTH_EVENT = 'auth:changed';
 
 export const Navbar = ({ onMenuClick }: NavbarProps) => {
   const location = useLocation();
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+const { user, isAuthenticated, loading } = useAuth();
+const [imgOk, setImgOk] = useState(true);
 
-  useEffect(() => {
-    const controller = new AbortController();
 
-    const fetchProfile = async () => {
-      try {
-        const res = await fetch('http://localhost:8080/api/profile', {
-          credentials: 'include',
-          signal: controller.signal,
-          headers: { 'Cache-Control': 'no-store' },
-        });
-        if (!res.ok) throw new Error();
-
-        const data = await res.json();
-
-        // normalize profile picture URL if provided
-        const fullProfile = { ...data };
-        if (data.profilePicture) {
-          fullProfile.profilePicture = `http://localhost:8080${data.profilePicture}`;
-        }
-
-        setUser(fullProfile);
-      } catch {
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // initial fetch
-    fetchProfile();
-
-    // react to auth changes (login/logout elsewhere)
-    const handler = () => fetchProfile();
-    window.addEventListener(AUTH_EVENT, handler);
-
-    return () => {
-      controller.abort();
-      window.removeEventListener(AUTH_EVENT, handler);
-    };
-  }, []);
-
-  if (loading) return null;
-  const isAuthenticated = !!user;
 
   const isActive = (path: string) => location.pathname === path;
+
+  function toAbsoluteMediaUrl(pathOrUrl?: string | null) {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  return `http://localhost:8080${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
+}
+
 
   return (
     <nav className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-soft">
@@ -141,19 +107,20 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
               )}
 
               <Button variant="ghost" className="p-1">
-                <Avatar className="h-8 w-8">
-                  {user?.profilePicture ? (
-                    <AvatarImage
-                      src={user.profilePicture}
-                      alt={user.fullName || user.username || "User"}
-                      className="object-cover"
-                    />
-                  ) : (
-                    <AvatarFallback className="bg-muted">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                    </AvatarFallback>
-                  )}
-                </Avatar>
+<Avatar className="h-8 w-8">
+  {imgOk && user?.profilePicture ? (
+    <AvatarImage
+      src={toAbsoluteMediaUrl(user.profilePicture)}
+      alt={user.username ?? "User"}
+      className="object-cover"
+      onError={() => setImgOk(false)}
+    />
+  ) : (
+    <AvatarFallback className="bg-muted">
+      <User className="h-4 w-4" />
+    </AvatarFallback>
+  )}
+</Avatar>
               </Button>
             </div>
           )}

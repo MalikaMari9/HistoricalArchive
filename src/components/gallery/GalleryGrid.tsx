@@ -114,9 +114,9 @@ export const GalleryGrid = ({
             location={artifact.location}
             rating={artifact.averageRating}
             totalRatings={artifact.totalRatings}
-            isWatchLater={watchedItems.has(artifact._id)}
+            //isWatchLater={watchedItems.has(artifact._id)}
             onRate={handleRate}
-            onToggleWatchLater={handleToggleWatchLater}
+            //onToggleWatchLater={handleToggleWatchLater}
           />
         ))}
       </div>

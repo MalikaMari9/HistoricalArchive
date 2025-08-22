@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   User, Edit3, Lock, Heart, LogOut, Users,
-  CheckCircle, BarChart, Upload, GraduationCap, X, Image
+  CheckCircle, BarChart, Upload, GraduationCap, X, Image, Info, Mail
 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { LogoutDialog } from '@/components/LogoutDialog';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAuth } from "@/hooks/useAuth";
 
 const AUTH_EVENT = 'auth:changed';
 
@@ -34,53 +36,15 @@ export const Sidebar = ({
   const [isVisible, setIsVisible] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const { toast } = useToast();
-
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
+  const [imgOk, setImgOk] = useState(true);
+  const { user, logout, isAuthenticated, loading } = useAuth();
   const userRole: Role = user?.role || 'visitor';
-  const isAuthenticated = !!user;
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const fetchProfile = async () => {
-      try {
-        const res = await fetch('http://localhost:8080/api/profile', {
-          credentials: 'include',
-          signal: controller.signal,
-          headers: { 'Cache-Control': 'no-store' },
-        });
-        if (!res.ok) throw new Error();
-
-        const data = await res.json();
-
-        // normalize profile picture URL if provided
-        const fullProfile = { ...data };
-        if (data.profilePicture) {
-          fullProfile.profilePicture = `http://localhost:8080${data.profilePicture}`;
-        }
-
-        setUser(fullProfile);
-      } catch {
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // initial fetch
-    fetchProfile();
-
-    // react to auth changes (login/logout elsewhere)
-    const handler = () => fetchProfile();
-    window.addEventListener(AUTH_EVENT, handler);
-
-    return () => {
-      controller.abort();
-      window.removeEventListener(AUTH_EVENT, handler);
-    };
-  }, []);
+  function toAbsoluteMediaUrl(pathOrUrl?: string | null) {
+    if (!pathOrUrl) return "";
+    if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+    return `http://localhost:8080${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
+  }
 
   useEffect(() => {
     if (isOpen) setIsVisible(true);
@@ -117,16 +81,17 @@ export const Sidebar = ({
           {isAuthenticated && (
             <div className="p-6">
               <div className="flex items-center space-x-4">
-                <Avatar className="h-12 w-12">
-                  {user?.profilePicture ? (
+                <Avatar className="h-8 w-8">
+                  {imgOk && user?.profilePicture ? (
                     <AvatarImage
-                      src={user.profilePicture}
-                      alt={user.fullName || user.username || "User"}
+                      src={toAbsoluteMediaUrl(user.profilePicture)}
+                      alt={user.username ?? "User"}
                       className="object-cover"
+                      onError={() => setImgOk(false)}
                     />
                   ) : (
                     <AvatarFallback className="bg-muted">
-                      <User className="h-6 w-6 text-muted-foreground" />
+                      <User className="h-4 w-4" />
                     </AvatarFallback>
                   )}
                 </Avatar>
@@ -135,9 +100,9 @@ export const Sidebar = ({
                   <Link
                     to={
                       userRole === 'admin' ? '/admin'
-                      : userRole === 'professor' ? '/professor'
-                      : userRole === 'curator' ? '/curator'
-                      : '/visitor'
+                        : userRole === 'professor' ? '/professor'
+                          : userRole === 'curator' ? '/curator'
+                            : '/visitor'
                     }
                     onClick={handleItemClick}
                     className="text-muted-foreground capitalize hover:text-primary transition-colors underline-offset-2 hover:underline"
@@ -149,9 +114,9 @@ export const Sidebar = ({
             </div>
           )}
 
-          {/* Content */}
-          {isAuthenticated && (
-            <div className="flex-1 overflow-y-auto">
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto">
+            {isAuthenticated && (
               <div className="px-6 space-y-6">
                 {/* Account Section */}
                 <div className="space-y-4">
@@ -201,9 +166,32 @@ export const Sidebar = ({
                     <Link to="/admin/reports" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><BarChart className="icon" /><span>Reports</span></Link>
                   </div>
                 )}
+
+                {/* General */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">GENERAL</h3>
+                  <div className="space-y-1">
+                    <Link
+                      to="/about"
+                      onClick={handleItemClick}
+                      className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"
+                    >
+                      <Info className="icon" />
+                      <span>About</span>
+                    </Link>
+                    <Link
+                      to="/contact"
+                      onClick={handleItemClick}
+                      className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"
+                    >
+                      <Mail className="icon" />
+                      <span>Contact Us</span>
+                    </Link>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Logout */}
           {isAuthenticated && (
@@ -243,17 +231,8 @@ export const Sidebar = ({
         onOpenChange={setLogoutDialogOpen}
         onConfirm={async () => {
           try {
-            await fetch('http://localhost:8080/api/logout', {
-              method: 'POST',
-              credentials: 'include',
-            });
-            // Broadcast to Navbar/Sidebar/etc.
-            window.dispatchEvent(new Event(AUTH_EVENT));
-            setUser(null);
-
+            await logout();
             toast({ title: 'Logged out', description: 'You have been signed out successfully.' });
-            localStorage.clear();
-            sessionStorage.clear();
             setLogoutDialogOpen(false);
             onClose();
             navigate('/signin');

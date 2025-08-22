@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   professorListPendingCuratorsApplication,
   professorApproveCuratorApp,
@@ -18,6 +18,7 @@ import {
 
 export default function CuratorApplications() {
   const navigate = useNavigate();
+  const { user, ready } = useAuthGuard();
   const { id: focusIdParam } = useParams();
   const focusId = focusIdParam ? Number(focusIdParam) : null;
 
@@ -37,6 +38,19 @@ export default function CuratorApplications() {
     () => new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }),
     []
   );
+
+useEffect(() => {
+  if (!ready) return;
+
+  if (!user) {
+    // session expired or not logged in at all
+    navigate("/signin", { replace: true });
+  } else if (user.role !== "professor") {
+    // logged in, but not a professor
+    navigate("/403", { replace: true });
+  }
+}, [ready, user, navigate]);
+
 
   // Load data
   useEffect(() => {

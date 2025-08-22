@@ -1,26 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useNavigate } from "react-router-dom";
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, MessageSquare, Image, PlusCircle, Clock, CheckCircle } from "lucide-react";
+import {
+  Upload, MessageSquare, Image, PlusCircle, Clock, CheckCircle,
+} from "lucide-react";
 import { Link } from "react-router-dom";
-import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   curatorListArtworks,
   curatorGetStats,
   CuratorArtworkItem,
   CuratorStats,
 } from "@/services/api";
+import { useAuth } from "@/hooks/useAuth";
 import axios, { AxiosError } from "axios";
 
 type ArtworkRow = {
   id: number;
   title: string;
-  status: "approved" | "pending" | "rejected";
-  date: string; // formatted for display
+  status: "accepted" | "pending" | "rejected";
+  date: string;
 };
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 export default function CuratorDashboard() {
-  const { ready } = useAuthGuard(); // identical behavior to Professor guard
+  useAuthGuard();
+  const navigate = useNavigate();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
+
   const [myArtworks, setMyArtworks] = useState<ArtworkRow[]>([]);
   const [stats, setStats] = useState<CuratorStats>({
     totalArtworks: 0,
@@ -41,9 +49,16 @@ export default function CuratorDashboard() {
     []
   );
 
+  // Redirect if not curator
+useEffect(() => {
+  if (!authLoading && isAuthenticated && user?.role !== "curator") {
+    navigate("/403", { replace: true });
+  }
+}, [user, authLoading, isAuthenticated, navigate]);
+
+  // Load curator data
   useEffect(() => {
-    if (!ready) return;
-    const controller = new AbortController();
+    if (authLoading || !isAuthenticated || user?.role !== "curator") return;
 
     async function load() {
       try {
@@ -62,9 +77,10 @@ export default function CuratorDashboard() {
           return {
             id: art.id,
             title: art.title,
-            status: normalized === "approved" || normalized === "pending" || normalized === "rejected"
-              ? normalized
-              : "pending",
+            status:
+              normalized === "accepted" || normalized === "pending" || normalized === "rejected"
+                ? normalized
+                : "pending",
             date,
           };
         });
@@ -72,10 +88,6 @@ export default function CuratorDashboard() {
         setMyArtworks(rows);
         setStats(statsData);
       } catch (e) {
-        // Ignore if aborted
-        if ((e as any)?.name === "AbortError") return;
-
-        // If axios error and auth layer already redirected on 401/403, do nothing
         const ax = e as AxiosError;
         if (axios.isAxiosError(ax) && ax.response && (ax.response.status === 401 || ax.response.status === 403)) {
           return;
@@ -88,10 +100,24 @@ export default function CuratorDashboard() {
     }
 
     load();
-    return () => controller.abort();
-  }, [ready, dateFmt]);
+  }, [authLoading, user, isAuthenticated, dateFmt]);
 
-  if (!ready || loading) {
+
+  if (!authLoading && !isAuthenticated) {
+  return (
+    <div className="min-h-screen flex items-center justify-center text-center px-4">
+      <div className="space-y-4">
+        <h2 className="text-2xl font-semibold">Session expired</h2>
+        <p className="text-muted-foreground">
+          Please sign in again to access your curator dashboard.
+        </p>
+        <Button onClick={() => navigate("/login")}>Go to Login</Button>
+      </div>
+    </div>
+  );
+}
+
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary" />
@@ -196,7 +222,7 @@ export default function CuratorDashboard() {
                         <p className="text-sm text-muted-foreground">{artwork.date}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {artwork.status === "approved" && (
+                        {artwork.status === "accepted" && (
                           <CheckCircle className="h-4 w-4 text-green-600" />
                         )}
                         {artwork.status === "pending" && (
@@ -207,7 +233,7 @@ export default function CuratorDashboard() {
                         )}
                         <span
                           className={`text-sm px-2 py-1 rounded-full ${
-                            artwork.status === "approved"
+                            artwork.status === "accepted"
                               ? "bg-green-100 text-green-800"
                               : artwork.status === "pending"
                               ? "bg-yellow-100 text-yellow-800"

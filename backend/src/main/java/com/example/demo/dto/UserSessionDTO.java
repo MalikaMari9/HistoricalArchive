@@ -5,6 +5,9 @@ public class UserSessionDTO {
     private String email;
     private String role;
     private Integer userId;
+    private String profilePicture;
+    private String status;
+    
 
     public UserSessionDTO(String username, String email, String role) {
         this.username = username;
@@ -44,6 +47,23 @@ public class UserSessionDTO {
     public String getRole() {
         return role;
     }
+
+	public String getStatus() {
+		return status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+
+	public String getProfilePicture() {
+		return profilePicture;
+	}
+
+	public void setProfilePicture(String profilePicture) {
+		this.profilePicture = profilePicture;
+	}
+    
     
 
 }

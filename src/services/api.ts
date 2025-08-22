@@ -1,6 +1,6 @@
 // src/services/api.ts
 import axios from "axios";
-
+import { User } from "@/hooks/useAuth"; 
 /**
  * Axios API client configuration
  * - Base URL: Spring Boot backend at http://localhost:8080/api
@@ -32,7 +32,9 @@ export const login = async (payload: { username: string; password: string }) => 
   await api.post("/users/login", payload, { withCredentials: true });
 };
 
-export const getMe = async (): Promise<{ role: string } & Record<string, any>> => {
+
+
+export const getMe = async (): Promise<User> => {
   const res = await api.get("/users/me", { withCredentials: true });
   return res.data;
 };
@@ -91,6 +93,7 @@ export const changeMyPassword = async (payload: ChangePasswordPayload) => {
   return res.data;
 };
 
+
 /* -------------------------------------------------------------------------- */
 /*                               DASHBOARD APIS                               */
 /* -------------------------------------------------------------------------- */
@@ -113,18 +116,39 @@ export interface AdminRecentActivity {
 
 // --- Lightly type these + accept { signal } ---
 
-export const fetchDashboardStats = async (opts?: { signal?: AbortSignal }): Promise<AdminDashboardStats> => {
-  const res = await api.get<AdminDashboardStats>("/admin/dashboard/stats", { signal: opts?.signal as any });
+export const fetchDashboardStats = async (opts?: {
+  signal?: AbortSignal;
+}): Promise<AdminDashboardStats> => {
+  const res = await api.get<AdminDashboardStats>("/admin/dashboard/stats", {
+    signal: opts?.signal as any,
+  });
   return res.data;
 };
 
-export const fetchRecentActivities = async (opts?: { signal?: AbortSignal }): Promise<AdminRecentActivity[]> => {
-  const res = await api.get<AdminRecentActivity[]>("/admin/dashboard/activities", { signal: opts?.signal as any });
+export const fetchRecentActivities = async (opts?: {
+  signal?: AbortSignal;
+  page?: number;
+  size?: number;
+}): Promise<PageResponse<AdminRecentActivity>> => {
+  const res = await api.get<PageResponse<AdminRecentActivity>>(
+    "/admin/dashboard/activities",
+    {
+      signal: opts?.signal as any,
+      params: {
+        page: opts?.page ?? 0,
+        size: opts?.size ?? 10,
+      },
+    }
+  );
   return res.data;
 };
 
-export const countAnnouncementsAdmin = async (opts?: { signal?: AbortSignal }): Promise<number> => {
-  const res = await api.get<{ count: number }>("/announcements/count", { signal: opts?.signal as any });
+export const countAnnouncementsAdmin = async (opts?: {
+  signal?: AbortSignal;
+}): Promise<number> => {
+  const res = await api.get<{ count: number }>("/announcements/count", {
+    signal: opts?.signal as any,
+  });
   return res.data.count;
 };
 
@@ -770,6 +794,7 @@ export interface MyArtworkDTO {
   images?: ArtifactImageDto[];
   averageRating: number;
   totalRatings: number;
+  status: string;
 }
 
 export interface PageResponse<T> {

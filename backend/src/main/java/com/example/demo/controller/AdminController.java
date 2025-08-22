@@ -6,10 +6,15 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.demo.dto.ActivityRequest;
@@ -103,10 +108,14 @@ public class AdminController {
     }
 
     @GetMapping("/dashboard/activities")
-    public ResponseEntity<List<ActivityRequest>> getRecentActivities() {
-        // Build a simple recent activity feed from real data available
+    public ResponseEntity<Page<ActivityRequest>> getRecentActivities(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        
+        // Build a comprehensive recent activity feed from real data available
+        List<ActivityRequest> allEvents = new java.util.ArrayList<>();
+        
         // 1) Latest users
-        List<ActivityRequest> events = new java.util.ArrayList<>();
         try {
             userRepository.findAll().stream()
                     .sorted((a, b) -> {
@@ -117,8 +126,8 @@ public class AdminController {
                         if (bt == null) return -1;
                         return bt.compareTo(at);
                     })
-                    .limit(5)
-                    .forEach(u -> events.add(new ActivityRequest(
+                    .limit(50) // Get more data for pagination
+                    .forEach(u -> allEvents.add(new ActivityRequest(
                             u.getUserId().longValue(),
                             "New user registration",
                             u.getUsername() + " joined as " + u.getRole().name(),
@@ -130,8 +139,8 @@ public class AdminController {
         try {
             userArtifactRepository.findByStatus(com.example.demo.entity.ApplicationStatus.pending).stream()
                     .sorted((a, b) -> b.getSavedAt().compareTo(a.getSavedAt()))
-                    .limit(5)
-                    .forEach(ua -> events.add(new ActivityRequest(
+                    .limit(50) // Get more data for pagination
+                    .forEach(ua -> allEvents.add(new ActivityRequest(
                             ua.getUserArtifactId().longValue(),
                             "Art submission pending",
                             "Artifact " + ua.getArtifactId() + " awaiting approval",
@@ -139,7 +148,20 @@ public class AdminController {
                     )));
         } catch (Exception ignored) {}
 
-        // 3) Categories recently created
+        // 3) Approved artworks as activity
+        try {
+            userArtifactRepository.findByStatus(com.example.demo.entity.ApplicationStatus.accepted).stream()
+                    .sorted((a, b) -> b.getSavedAt().compareTo(a.getSavedAt()))
+                    .limit(50) // Get more data for pagination
+                    .forEach(ua -> allEvents.add(new ActivityRequest(
+                            ua.getUserArtifactId().longValue(),
+                            "Art submission approved",
+                            "Artifact " + ua.getArtifactId() + " has been approved",
+                            java.time.LocalDateTime.ofInstant(ua.getSavedAt(), java.time.ZoneId.systemDefault())
+                    )));
+        } catch (Exception ignored) {}
+
+        // 4) Categories recently created
         try {
             categoryRepository.findAll().stream()
                     .sorted((a, b) -> {
@@ -150,8 +172,8 @@ public class AdminController {
                         if (bt == null) return -1;
                         return bt.compareTo(at);
                     })
-                    .limit(5)
-                    .forEach(c -> events.add(new ActivityRequest(
+                    .limit(20) // Get more data for pagination
+                    .forEach(c -> allEvents.add(new ActivityRequest(
                             c.getCategoryId() != null ? c.getCategoryId().longValue() : 0L,
                             "Category created",
                             c.getName(),
@@ -159,9 +181,19 @@ public class AdminController {
                     )));
         } catch (Exception ignored) {}
 
-        // Sort final events by timestamp desc and limit
-        events.sort((e1, e2) -> e2.getTimestamp().compareTo(e1.getTimestamp()));
-        List<ActivityRequest> limited = events.size() > 10 ? events.subList(0, 10) : events;
-        return ResponseEntity.ok(limited);
+        // Sort all events by timestamp desc
+        allEvents.sort((e1, e2) -> e2.getTimestamp().compareTo(e1.getTimestamp()));
+
+        // Apply pagination
+        Pageable pageable = PageRequest.of(page, size);
+        int totalElements = allEvents.size();
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + size, totalElements);
+        
+        List<ActivityRequest> pageContent = start < totalElements ? 
+            allEvents.subList(start, end) : new java.util.ArrayList<>();
+        
+        Page<ActivityRequest> pageResult = new PageImpl<>(pageContent, pageable, totalElements);
+        return ResponseEntity.ok(pageResult);
     }
 }

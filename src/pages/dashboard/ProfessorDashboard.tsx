@@ -50,8 +50,7 @@ type PendingArtifactVM = {
 
 export default function ProfessorDashboard() {
   const navigate = useNavigate();
-  const { ready } = useAuthGuard();
-
+const { user, ready } = useAuthGuard();
   const [pendingArtworks, setPendingArtworks] = useState<PendingArtworkVM[]>([]);
   const [recentDecisions, setRecentDecisions] = useState<RecentDecisionVM[]>([]);
   const [stats, setStats] = useState<ProfessorStats>({ pending: 0, approved: 0, rejected: 0, total: 0 });
@@ -64,6 +63,19 @@ export default function ProfessorDashboard() {
     () => new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }),
     []
   );
+
+useEffect(() => {
+  if (!ready) return;
+
+  if (!user) {
+    // session expired or not logged in at all
+    navigate("/signin", { replace: true });
+  } else if (user.role !== "professor") {
+    // logged in, but not a professor
+    navigate("/403", { replace: true });
+  }
+}, [ready, user, navigate]);
+
 
   useEffect(() => {
     if (!ready) return;

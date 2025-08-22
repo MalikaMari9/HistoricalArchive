@@ -6,6 +6,7 @@ import com.example.demo.dto.SignUpRequest;
 import com.example.demo.dto.UserSessionDTO;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserRole;
+import com.example.demo.entity.UserStatus;
 import com.example.demo.repository.UserRepository;
 
 import jakarta.servlet.http.HttpSession;
@@ -63,6 +64,11 @@ public class UserController {
             return ResponseEntity.status(403).body("Your account is restricted. Please contact support.");
         }
 
+        
+        if (dbUser.getStatus() == UserStatus.RESTRICTED) {
+            return ResponseEntity.status(403).body("Your account is restricted. Please contact support.");
+        }
+
 
         boolean passwordMatch = BCrypt.checkpw(loginRequest.getPassword(), dbUser.getPassword());
 
@@ -100,9 +106,11 @@ public class UserController {
             loggedInUser.getUsername(),
             loggedInUser.getEmail(),
             loggedInUser.getRole().name()
+            
         );
         userSessionDTO.setUserId(loggedInUser.getUserId());
-        
+        userSessionDTO.setStatus(loggedInUser.getStatus().name());
+        userSessionDTO.setProfilePicture(loggedInUser.getProfilePath());
         return ResponseEntity.ok(userSessionDTO);
     }
 

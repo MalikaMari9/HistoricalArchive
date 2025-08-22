@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   AppStatus,
   ReviewArtifactDto,
@@ -138,6 +138,7 @@ function ImgWithFallback({
 
 export function ReviewArts() {
   const navigate = useNavigate();
+  const {user, ready} = useAuthGuard();
 
   // deep-link params
   const [searchParams] = useSearchParams();
@@ -182,6 +183,20 @@ export function ReviewArts() {
 
   // abort controllers to avoid race conditions
   const aborters = useRef<Record<string, AbortController | null>>({});
+
+useEffect(() => {
+  if (!ready) return;
+
+  if (!user) {
+    // session expired or not logged in at all
+    navigate("/signin", { replace: true });
+  } else if (user.role !== "professor") {
+    // logged in, but not a professor
+    navigate("/403", { replace: true });
+  }
+}, [ready, user, navigate]);
+
+
 
   // one-time flash style
   useEffect(() => {

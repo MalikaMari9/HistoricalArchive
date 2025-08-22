@@ -54,6 +54,9 @@ import {
   updateAnnouncement,
   type AnnouncementDto,
 } from "@/services/api";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
+import { useNavigate } from "react-router-dom";
+
 
 const AnnouncementSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -67,6 +70,9 @@ const AnnouncementSchema = z.object({
 type AnnouncementForm = z.infer<typeof AnnouncementSchema>;
 
 export default function MakeAnnouncement() {
+
+    const navigate = useNavigate();
+  const { user, ready } = useAuthGuard();
   const [published, setPublished] = React.useState<AnnouncementDto[]>([]);
   const [editTarget, setEditTarget] = React.useState<AnnouncementDto | null>(
     null
@@ -92,6 +98,16 @@ export default function MakeAnnouncement() {
 
   const watch = form.watch();
 
+
+  React.useEffect(() => {
+      if (!ready) return;
+  
+      if (!user) {
+        navigate("/signin", { replace: true });
+      } else if (user.role !== "admin") {
+        navigate("/403", { replace: true });
+      }
+    }, [ready, user, navigate]);
   React.useEffect(() => {
     document.title = "Make Announcement | Admin";
     const meta = document.querySelector('meta[name="description"]');

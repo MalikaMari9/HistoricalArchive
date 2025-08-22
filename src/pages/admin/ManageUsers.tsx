@@ -54,7 +54,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-
+import { useAuthGuard } from "@/hooks/useAuthGuard";
+import { useNavigate } from "react-router-dom";
 export default function ManageUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -62,7 +63,8 @@ export default function ManageUsers() {
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(1); // 1-based index
   const pageSize = 6;
-
+const { user, ready } = useAuthGuard();
+const navigate = useNavigate();
   // Create User modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newUsername, setNewUsername] = useState("");
@@ -71,6 +73,16 @@ export default function ManageUsers() {
   const [newRole, setNewRole] = useState<AdminUser["role"]>("visitor");
   const [creating, setCreating] = useState(false);
 
+
+     useEffect(() => {
+    if (!ready) return;
+
+    if (!user) {
+      navigate("/signin", { replace: true });
+    } else if (user.role !== "admin") {
+      navigate("/403", { replace: true });
+    }
+  }, [ready, user, navigate]);
   const load = async () => {
     try {
       setLoading(true);

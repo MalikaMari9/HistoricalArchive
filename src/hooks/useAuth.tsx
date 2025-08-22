@@ -1,3 +1,4 @@
+// src/hooks/useAuth.tsx
 import {
   createContext,
   useContext,
@@ -6,19 +7,23 @@ import {
   ReactNode,
 } from "react";
 
-interface User {
-  id: string;
+// Match your session DTO
+export interface User {
+  userId: number;
   username: string;
   email: string;
-  role: string;
-  avatar?: string;
+  role: "visitor" | "curator" | "professor" | "admin";
+  status: "ACTIVE" | "RESTRICTED"; // NEW
+  profilePicture?: string;
+  avatar?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (userData: User) => void;
-  logout: () => void;
+  loading: boolean;
+  login: (userData?: User) => Promise<void>;
+  logout: () => Promise<void>;
   updateProfile: (userData: Partial<User>) => void;
 }
 
@@ -26,47 +31,66 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
 
+  // Fetch session user on first load
   useEffect(() => {
-    // Check if user is logged in on app start
-    const storedAuth = localStorage.getItem("isAuthenticated");
-    const storedUser = localStorage.getItem("userData");
-
-    if (storedAuth === "true" && storedUser) {
+    const fetchUser = async () => {
       try {
-        const userData = JSON.parse(storedUser);
-        setUser(userData);
-        setIsAuthenticated(true);
-      } catch (error) {
-        // Clear invalid data
-        localStorage.removeItem("isAuthenticated");
-        localStorage.removeItem("userData");
+        const res = await fetch("http://localhost:8080/api/users/me", {
+          credentials: "include",
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+
+    fetchUser();
   }, []);
 
-  const login = (userData: User) => {
-    setUser(userData);
-    setIsAuthenticated(true);
-    localStorage.setItem("isAuthenticated", "true");
-    localStorage.setItem("userData", JSON.stringify(userData));
-    localStorage.setItem("userRole", userData.role);
+  const login = async (userData?: User) => {
+    if (userData) {
+      setUser(userData); // manual override if passed
+    } else {
+      try {
+        const res = await fetch("http://localhost:8080/api/users/me", {
+          credentials: "include",
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        }
+      } catch {
+        setUser(null);
+      }
+    }
   };
 
-  const logout = () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    localStorage.removeItem("isAuthenticated");
-    localStorage.removeItem("userData");
-    localStorage.removeItem("userRole");
+  const logout = async () => {
+    try {
+      await fetch("http://localhost:8080/api/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } finally {
+      setUser(null);
+    }
   };
 
-  const updateProfile = (userData: Partial<User>) => {
+  const updateProfile = (updates: Partial<User>) => {
     if (user) {
-      const updatedUser = { ...user, ...userData };
-      setUser(updatedUser);
-      localStorage.setItem("userData", JSON.stringify(updatedUser));
+      const updated = { ...user, ...updates };
+      setUser(updated);
     }
   };
 
@@ -74,7 +98,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated,
+        isAuthenticated: !!user,
+        loading,
         login,
         logout,
         updateProfile,
@@ -87,7 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
