@@ -1,5 +1,27 @@
 package com.example.demo.controller;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.example.demo.dto.ArtifactDTO;
 import com.example.demo.entity.Artifact;
 import com.example.demo.entity.User;
@@ -11,20 +33,6 @@ import com.example.demo.service.ArtifactService;
 import com.example.demo.service.ArtifactServiceImpl;
 
 import jakarta.servlet.http.HttpSession;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
 
 
 
@@ -62,12 +70,13 @@ public class ArtifactController {
             @RequestParam(required = false) String period,
             @RequestParam(required = false) String medium,
             @RequestParam(required = false) String artistName,
+            @RequestParam(required = false) String tags,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
             Pageable pageable) {
 
         Page<Artifact> results = artifactService.searchArtifacts(
-            anyField, title, category, culture, department, period, medium, artistName, fromDate, toDate, pageable
+            anyField, title, category, culture, department, period, medium, artistName, tags, fromDate, toDate, pageable
         );
         System.out.println("🔎 Search Results:");
         System.out.println("  Total Elements: " + results.getTotalElements());

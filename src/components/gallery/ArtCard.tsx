@@ -103,23 +103,35 @@ export const ArtCard = (props: ArtCardProps) => {
   const locationString = locationParts.join(', ');
 
   /* --------------------------- Initialize bookmark flag --------------------------- */
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!artId) return;
-      if (initialBookmarked) {
-        setBookmarked(true);
-        return;
-      }
-      try {
-        const flagged = await checkBookmark(artId);
-        if (!cancelled) setBookmarked(flagged);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [initialBookmarked, artId]);
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    if (!artId) return;
+
+    if (initialBookmarked) {
+      setBookmarked(true);
+      return;
+    }
+
+    // ✅ only run bookmark check if logged in
+    if (!currentUser?.userId) {
+      return;
+    }
+
+    try {
+      const flagged = await checkBookmark(artId);
+      if (!cancelled) setBookmarked(flagged);
+    } catch {
+      // Optionally log or toast for debugging
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [initialBookmarked, artId, currentUser?.userId]);
+
 
   /* ---------------------------- Lazy-load comments UI ---------------------------- */
   useEffect(() => {

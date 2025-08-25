@@ -10,6 +10,7 @@ import {
   getMyPublicProfile,
   listNotifications,
   markAllNotificationsRead,
+  markNotificationRead,
   type ViewUserProfile,
   type NotificationDto,
 } from "@/services/api";
@@ -20,7 +21,6 @@ type UserRole = "visitor" | "curator" | "professor" | "admin";
 
 /* -------------------------------- Helpers --------------------------------- */
 
-/** “2h ago” style relative time (simple, fast) */
 function formatRelative(isoDate: string) {
   const then = new Date(isoDate).getTime();
   const now = Date.now();
@@ -35,46 +35,28 @@ function formatRelative(isoDate: string) {
   return `${d}d ago`;
 }
 
-/**
- * Decide where a notification should link to (if anywhere),
- * based on its type, related object, and the current user's role.
- */
 function buildVisitLink(n: NotificationDto, userRole: UserRole): string | null {
-  // Info-only curator application outcomes
   if (
     n.notificationType === "CURATOR_APPLICATION_APPROVED" ||
     n.notificationType === "CURATOR_APPLICATION_REJECTED"
-  ) {
-    return null;
-  }
+  ) return null;
 
-  // Professor navigations
   if (userRole === "professor") {
-    if (n.relatedType === "curator_application" && n.relatedId) {
+    if (n.relatedType === "curator_application" && n.relatedId)
       return `/professor/curators/review/${n.relatedId}`;
-    }
+
     if (n.relatedType === "artifact") {
-      if (n.notificationType === "ARTIFACT_UPLOADED" && n.relatedId) {
-        // deep-link to review screen; your route may differ
-        return `/professor/review-artifacts?status=pending&focusSubmissionId=${encodeURIComponent(
-          n.relatedId
-        )}`;
-      }
-      if (n.relatedId) {
-        // public artifact page by Mongo artifact id
-        return `/artwork/${n.relatedId}`;
-      }
+      if (n.notificationType === "ARTIFACT_UPLOADED" && n.relatedId)
+        return `/professor/review-artifacts?status=pending&focusSubmissionId=${encodeURIComponent(n.relatedId)}`;
+      if (n.relatedId) return `/artwork/${n.relatedId}`;
     }
   }
 
-  // Uploader navigations (accepted/rejected)
   if (
     n.relatedType === "artifact" &&
     (n.notificationType === "ARTIFACT_ACCEPTED" || n.notificationType === "ARTIFACT_REJECTED") &&
     n.relatedId
-  ) {
-    return `/artwork/${n.relatedId}`;
-  }
+  ) return `/artwork/${n.relatedId}`;
 
   return null;
 }
@@ -83,23 +65,26 @@ function buildVisitLink(n: NotificationDto, userRole: UserRole): string | null {
 
 export const Notifications = () => {
   const navigate = useNavigate();
- const { user, ready } = useAuthGuard();
+  const { user, ready } = useAuthGuard();
   const [role, setRole] = useState<UserRole>("visitor");
   const [items, setItems] = useState<NotificationDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const abortRef = useRef<AbortController | null>(null);
 
   const unreadCount = useMemo(() => items.filter((n) => !n.isRead).length, [items]);
 
-  // Load role + notifications
-  useEffect(() => {
-     if (!ready) return;               // wait until auth resolved
-    if (!user) return;                // useAuthGuard already redirected
+  function markAsReadLocally(id: number) {
+    setItems((prev) =>
+      [...prev.map((item) =>
+        item.notiId === id ? { ...item, isRead: true } : item
+      )]
+    );
+  }
 
-    // Use role from context (no extra API call)
-    setRole(user.role as UserRole);
+  useEffect(() => {
+    if (!ready || !user) return;
+
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -109,13 +94,24 @@ export const Notifications = () => {
         setLoading(true);
         setError(null);
 
-        // Get user role first (for link decisions)
         const me: ViewUserProfile = await getMyPublicProfile({ signal: ac.signal });
         setRole(me.role);
 
-        // Fetch notifications
-        const list = await listNotifications({ signal: ac.signal });
+        const list = await listNotifications({ signal: ac.signal, unreadOnly: false });
+console.log("Fetched notifications:");
+list.forEach((n) => {
+  console.log(`ID: ${n.notiId}, isRead: ${n.isRead}`);
+});
+
         setItems(list ?? []);
+        const sorted = (list ?? []).sort((a, b) => {
+  if (a.isRead === b.isRead) {
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // latest first
+  }
+  return a.isRead ? 1 : -1; // unread first
+});
+setItems(sorted);
+
       } catch (err: any) {
         if (err?.name === "CanceledError") return;
         const status = err?.response?.status;
@@ -131,19 +127,17 @@ export const Notifications = () => {
     })();
 
     return () => ac.abort();
-  }, []);
+  }, [ready, user]);
 
-  // Mark all as read (optimistic)
   const markAllAsRead = async () => {
     if (unreadCount === 0) return;
-    const prev = items;
-    setItems((p) => p.map((n) => ({ ...n, isRead: true })));
+    const prev = [...items];
+    setItems(prev.map((n) => ({ ...n, isRead: true })));
 
     try {
       await markAllNotificationsRead();
     } catch (e) {
       console.error(e);
-      // soft rollback (optional)
       setItems(prev);
     }
   };
@@ -152,7 +146,9 @@ export const Notifications = () => {
 
   if (loading) {
     return (
+      
       <div className="container mx-auto px-4 py-8">
+        
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="hover:bg-accent">
             <ArrowLeft className="h-4 w-4" />
@@ -183,15 +179,35 @@ export const Notifications = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Header */}
+       <style>
+    {`
+      .scrollbar-thin::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .scrollbar-thin::-webkit-scrollbar-thumb {
+        background-color: rgba(107, 114, 128, 0.4); /* like Tailwind gray-500 */
+        border-radius: 9999px;
+      }
+      .scrollbar-thin::-webkit-scrollbar-track {
+        background-color: transparent;
+      }
+
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+      .scrollbar-hide {
+        -ms-overflow-style: none; /* IE */
+        scrollbar-width: none;    /* Firefox */
+      }
+    `}
+  </style>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="hover:bg-accent">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-3xl font-bold text-foreground">
-            Notifications ({items.length})
-          </h1>
+          <h1 className="text-3xl font-bold text-foreground">Notifications ({items.length})</h1>
         </div>
 
         <div className="flex items-center gap-2">
@@ -208,8 +224,10 @@ export const Notifications = () => {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-card rounded-lg border shadow-sm">
+     <div className="bg-card rounded-lg border shadow-sm max-h-[500px] overflow-y-auto scrollbar-thin">
+
+
+
         <Table>
           <TableHeader>
             <TableRow>
@@ -217,6 +235,7 @@ export const Notifications = () => {
               <TableHead>Time</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>From</TableHead>
+              <TableHead>Action</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -237,9 +256,21 @@ export const Notifications = () => {
                   <TableCell className="text-muted-foreground text-sm">{time}</TableCell>
 
                   <TableCell className="max-w-md">
+                    
                     {visitLink ? (
                       <Link
                         to={visitLink}
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          try {
+                            await markNotificationRead(n.notiId);
+                            markAsReadLocally(n.notiId);
+                          } catch (err) {
+                            console.error("Failed to mark as read:", err);
+                          } finally {
+                            navigate(visitLink);
+                          }
+                        }}
                         className={`hover:underline transition-colors ${
                           n.isRead
                             ? "text-muted-foreground hover:text-foreground"
@@ -256,6 +287,27 @@ export const Notifications = () => {
                   </TableCell>
 
                   <TableCell className="text-muted-foreground">{from}</TableCell>
+
+                  <TableCell>
+                    {!n.isRead && (
+<Button
+  variant="default"
+  size="sm"
+  className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-md text-xs transition-colors"
+  onClick={async () => {
+    try {
+      await markNotificationRead(n.notiId);
+      markAsReadLocally(n.notiId);
+    } catch (e) {
+      console.error("Failed to mark notification as read", e);
+    }
+  }}
+>
+  Mark Read
+</Button>
+
+                    )}
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -263,7 +315,6 @@ export const Notifications = () => {
         </Table>
       </div>
 
-      {/* Empty state */}
       {items.length === 0 && (
         <div className="text-center py-12">
           <p className="text-muted-foreground">No notifications found</p>

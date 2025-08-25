@@ -17,7 +17,7 @@ interface Artifact {
   category?: string;
   description?: string;
   medium?: string;
-  imageUrl: string;
+  image_url: string;
   images?: {
     baseimageurl?: string;
   }[];
@@ -35,23 +35,25 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchTopRatedArtifacts = async () => {
-      try {
-        const response = await axios.get<Artifact[]>(
-          'http://localhost:8080/api/artifacts/top-rated'
-        );
-        setFeaturedArtifacts(response.data);
-      } catch (err) {
-        console.error("Failed to fetch top-rated artifacts:", err);
-        setError("Failed to load featured artifacts. Please try again later.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+useEffect(() => {
+  const fetchTopRatedArtifacts = async () => {
+    try {
+      const response = await axios.get<Artifact[]>(
+        'http://localhost:8080/api/artifacts/top-rated'
+      );
+      console.log("✅ Raw API response:", response.data); // ✅ ADD THIS
+      setFeaturedArtifacts(response.data);
+    } catch (err) {
+      console.error("❌ Failed to fetch top-rated artifacts:", err);
+      setError("Failed to load featured artifacts. Please try again later.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    fetchTopRatedArtifacts();
-  }, []);
+  fetchTopRatedArtifacts();
+}, []);
+
 
   return (
     <div className="min-h-screen">
@@ -151,27 +153,28 @@ const Index = () => {
             
             {/* Map over the fetched artifacts using ArtCard */}
             {featuredArtifacts.map((artifact) => (
-              <ArtCard
-                key={artifact._id}
-                _id={artifact._id}
-                id={artifact._id}
-                title={artifact.title}
-                artist={artifact.artist || artifact.culture}
-                culture={artifact.culture}
-                period={artifact.period}
-                category={artifact.category}
-                description={artifact.description}
-                medium={artifact.medium}
-                image={
-                  artifact.imageUrl?.trim() ||
-                  artifact.images?.[0]?.baseimageurl?.trim() ||
-                  '/default-artifact.png'
-                }
-                images={artifact.images}
-                location={artifact.location}
-                averageRating={artifact.averageRating}
-                userCount={artifact.totalRatings}
-              />
+<ArtCard
+  key={artifact._id}
+  _id={artifact._id}
+  id={artifact._id}
+  title={artifact.title}
+  artist={artifact.artist || artifact.culture}
+  culture={artifact.culture}
+  period={artifact.period}
+  category={artifact.category}
+  description={artifact.description}
+  medium={artifact.medium}
+  image={
+    artifact.image_url?.trim() ||
+    artifact.images?.[0]?.baseimageurl?.trim() ||
+    '/default-artifact.png'
+  }
+  images={artifact.images}
+  location={artifact.location}
+  averageRating={artifact.averageRating}
+  userCount={artifact.totalRatings}
+/>
+
             ))}
           </div>
           

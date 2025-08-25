@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Museum Map Styles */
+@import "./styles/museum-map.css";
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
 */
@@ -43,11 +46,11 @@ All colors MUST be HSL.
     --brown-light: 35 25% 75%;
     --cream: 35 20% 92%;
     --warm-white: 35 20% 97%;
-    
+
     /* Gradients */
     --gradient-warm: linear-gradient(135deg, hsl(35 25% 75%), hsl(30 35% 85%));
     --gradient-rich: linear-gradient(135deg, hsl(25 40% 35%), hsl(30 35% 45%));
-    
+
     /* Shadows */
     --shadow-soft: 0 4px 20px -2px hsl(25 40% 35% / 0.1);
     --shadow-elegant: 0 8px 32px -4px hsl(25 40% 35% / 0.15);

@@ -3,6 +3,8 @@ package com.example.demo.entity;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 @Entity
 @Table(name = "notification_tbl")
 public class Notification {
@@ -96,6 +98,7 @@ public class Notification {
         this.message = message;
     }
 
+    @JsonProperty("isRead")
     public boolean isRead() {
         return isRead;
     }

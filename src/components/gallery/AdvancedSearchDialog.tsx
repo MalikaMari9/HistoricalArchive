@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
-import { CalendarIcon, Search, Loader2 } from "lucide-react";
-import { format } from "date-fns";
-import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -12,13 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { AutocompleteInput } from "./AutocompleteInput";
 import { cn } from "@/lib/utils";
 import {
   fetchCategorySuggestions,
@@ -26,6 +22,10 @@ import {
   fetchDepartmentSuggestions,
   fetchPeriodSuggestions,
 } from "@/services/api";
+import { format } from "date-fns";
+import { CalendarIcon, Loader2, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AutocompleteInput } from "./AutocompleteInput";
 
 interface AdvancedSearchDialogProps {
   open: boolean;
@@ -40,6 +40,7 @@ export interface SearchFilters {
   culture?: string;
   department?: string;
   period?: string;
+  tags?: string;
   fromDate?: string;
   toDate?: string;
   sortBy?: string;
@@ -56,6 +57,7 @@ export function AdvancedSearchDialog({
   const [culture, setCulture] = useState("");
   const [department, setDepartment] = useState("");
   const [period, setPeriod] = useState("");
+  const [tags, setTags] = useState("");
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
   const [sortBy, setSortBy] = useState("best_match");
@@ -119,6 +121,7 @@ export function AdvancedSearchDialog({
       culture,
       department,
       period,
+      tags,
       fromDate: fromDate ? fromDate.toISOString().split("T")[0] : undefined,
       toDate: toDate ? toDate.toISOString().split("T")[0] : undefined,
       sortBy,
@@ -134,6 +137,7 @@ export function AdvancedSearchDialog({
     setCulture("");
     setDepartment("");
     setPeriod("");
+    setTags("");
     setFromDate(undefined);
     setToDate(undefined);
     setSortBy("best_match");
@@ -211,13 +215,23 @@ export function AdvancedSearchDialog({
                   disabled={isLoadingSuggestions}
                 />
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className="space-y-2">
                 <Label htmlFor="period">Period</Label>
                 <AutocompleteInput
                   id="period"
                   value={period}
                   onChange={setPeriod}
                   suggestions={periods}
+                  disabled={isLoadingSuggestions}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tags">Tags</Label>
+                <Input
+                  id="tags"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="Enter tags to search for"
                   disabled={isLoadingSuggestions}
                 />
               </div>

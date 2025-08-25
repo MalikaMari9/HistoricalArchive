@@ -114,5 +114,21 @@ public class CuratorApplicationController {
     }
     
     
+    @GetMapping("/api/curator/status")
+    public ResponseEntity<?> getCuratorApplicationStatus(HttpSession session) {
+        User user = (User) session.getAttribute("loggedInUser");
+        if (user == null) {
+            return ResponseEntity.status(401).body("Login required.");
+        }
+
+        Optional<CuratorApplication> existingApp = curatorApplicationRepo.findFirstByUser(user);
+        if (existingApp.isEmpty()) {
+            return ResponseEntity.ok(null); // Or simply 204 No Content
+        }
+
+        return ResponseEntity.ok(existingApp.get().getApplicationStatus().name().toLowerCase()); // "pending", etc.
+    }
+
+    
     
 }

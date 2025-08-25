@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
-import { applyForCurator, getMyPublicProfile, type ViewUserProfile } from "@/services/api";
+import { applyForCurator, getMyPublicProfile, type ViewUserProfile , getCuratorApplicationStatus } from "@/services/api";
 
 /* --------------------------------- Schema --------------------------------- */
 
@@ -47,6 +47,8 @@ export default function UpgradeCurator() {
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
+const [applicationStatus, setApplicationStatus] = useState<"pending" | "accepted" | "rejected" | null>(null);
+const [statusLoading, setStatusLoading] = useState(true);
 
   const acRef = useRef<AbortController | null>(null);
 
@@ -75,6 +77,13 @@ export default function UpgradeCurator() {
         setBootLoading(true);
         const me: ViewUserProfile = await getMyPublicProfile({ signal: ac.signal });
         setUserEmail(me.email ?? null);
+        try {
+  const status = await getCuratorApplicationStatus();
+  setApplicationStatus(status); // will be "pending" | "accepted" | "rejected"
+} catch (err) {
+  console.error("Failed to fetch application status", err);
+}
+
       } catch (err: any) {
         // Not logged in or other failure -> send to signin
         toast({
@@ -86,6 +95,8 @@ export default function UpgradeCurator() {
         return;
       } finally {
         setBootLoading(false);
+        setStatusLoading(false);
+
       }
     })();
 
@@ -173,6 +184,31 @@ export default function UpgradeCurator() {
   const emailDisplay = useMemo(() => userEmail ?? "Loading…", [userEmail]);
 
   /* -------------------------------- Render -------------------------------- */
+if (bootLoading || statusLoading) {
+  return <div className="p-6 text-center">Loading...</div>;
+}
+
+if (applicationStatus === "pending") {
+  return (
+    <div className="p-6 text-center max-w-xl mx-auto">
+      <h2 className="text-2xl font-semibold mb-4">Application Already Submitted</h2>
+      <p className="text-muted-foreground">
+        You’ve already submitted a curator application. Please wait while our professors review it.
+      </p>
+    </div>
+  );
+}
+
+if (applicationStatus === "accepted") {
+  return (
+    <div className="p-6 text-center max-w-xl mx-auto">
+      <h2 className="text-2xl font-semibold mb-4">You’re Already a Curator</h2>
+      <p className="text-muted-foreground">
+        Congratulations! You’ve already been accepted as a curator. There’s no need to reapply.
+      </p>
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-background p-6">

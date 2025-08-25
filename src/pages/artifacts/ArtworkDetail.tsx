@@ -1,13 +1,22 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, Bookmark, Heart, MessageCircle, Share2, Download } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/components/ui/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import {
+  ArrowLeft,
+  Bookmark,
+  Download,
+  Hash,
+  Heart,
+  MessageCircle,
+  Share2,
+  Star,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 // ✅ axios helpers
 import {
@@ -16,12 +25,12 @@ import {
   getCommentsByArtifact,
   postComment,
   reactToComment,
-  submitRating,
   removeRating,
+  submitRating,
   type ArtifactDetail,
   type CommentDTO,
   type RatingDTO,
-} from '@/services/api';
+} from "@/services/api";
 
 interface ArtworkImage {
   date?: string;
@@ -87,9 +96,9 @@ export default function ArtworkDetail() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [comments, setComments] = useState<Comment[]>([]);
-  const [newComment, setNewComment] = useState('');
+  const [newComment, setNewComment] = useState("");
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyContent, setReplyContent] = useState('');
+  const [replyContent, setReplyContent] = useState("");
   const [isPosting, setIsPosting] = useState(false);
   const [isReacting, setIsReacting] = useState(false);
 
@@ -115,15 +124,23 @@ export default function ArtworkDetail() {
 
         // Rating summary (+ userRating if logged in)
         const rating: RatingDTO = await getArtifactRatingInfo(_id);
-        setArtwork(prev =>
+        setArtwork((prev) =>
           prev
-            ? { ...prev, averageRating: rating.averageRating ?? 0, totalRatings: rating.totalRatings ?? 0 }
+            ? {
+                ...prev,
+                averageRating: rating.averageRating ?? 0,
+                totalRatings: rating.totalRatings ?? 0,
+              }
             : prev
         );
         if (rating.userRating != null) setUserRating(rating.userRating);
       } catch (err) {
-        console.error('Error loading artwork detail:', err);
-        toast({ title: 'Error', description: 'Could not load artwork details', variant: 'destructive' });
+        console.error("Error loading artwork detail:", err);
+        toast({
+          title: "Error",
+          description: "Could not load artwork details",
+          variant: "destructive",
+        });
       } finally {
         setIsLoading(false);
       }
@@ -134,7 +151,7 @@ export default function ArtworkDetail() {
 
   const normalizeArtworkData = (data: any): Artwork => ({
     _id: data._id ?? data.id ?? data.artifactId,
-    title: data.title || 'Untitled',
+    title: data.title || "Untitled",
     description: data.description || null,
     category: data.category || null,
     culture: data.culture || null,
@@ -145,12 +162,15 @@ export default function ArtworkDetail() {
     dimension: data.dimension || null,
     tags: data.tags || null,
     location: data.location || {},
-    uploaded_by: data.uploaded_by || data.artist_name || 'Unknown',
+    uploaded_by: data.uploaded_by || data.artist_name || "Unknown",
     uploaded_at: data.uploaded_at,
     updated_at: data.updated_at,
     images: (data.images || []).map((img: any) => ({
       ...img,
-      baseimageurl: img.baseimageurl || getImageUrlFromHarvard(img) || '/placeholder-art.jpg',
+      baseimageurl:
+        img.baseimageurl ||
+        getImageUrlFromHarvard(img) ||
+        "/placeholder-art.jpg",
     })),
     image_url: data.image_url || null,
     artist_name: data.artist_name || data.uploaded_by,
@@ -160,7 +180,8 @@ export default function ArtworkDetail() {
 
   const getImageUrlFromHarvard = (img: any): string | null => {
     if (img.iiifbaseuri) return `${img.iiifbaseuri}/full/full/0/default.jpg`;
-    if (img.idsid && img.renditionnumber) return `https://ids.lib.harvard.edu/ids/view/${img.idsid}/${img.renditionnumber}`;
+    if (img.idsid && img.renditionnumber)
+      return `https://ids.lib.harvard.edu/ids/view/${img.idsid}/${img.renditionnumber}`;
     return null;
   };
 
@@ -168,22 +189,44 @@ export default function ArtworkDetail() {
 
   const handleStarClick = async (starRating: number) => {
     if (!currentUser?.userId) {
-      toast({ title: 'Error', description: 'You must be logged in to rate artworks', variant: 'destructive' });
+      toast({
+        title: "Error",
+        description: "You must be logged in to rate artworks",
+        variant: "destructive",
+      });
       return;
     }
     if (!_id) return;
 
     setIsRating(true);
     try {
-      const data = await submitRating({ artifactId: _id, ratingValue: starRating });
+      const data = await submitRating({
+        artifactId: _id,
+        ratingValue: starRating,
+      });
       if (data.success) {
         setUserRating(starRating);
-        setArtwork(prev => (prev ? { ...prev, averageRating: data.averageRating, totalRatings: data.totalRatings } : prev));
-        toast({ title: 'Success', description: 'Rating submitted successfully' });
+        setArtwork((prev) =>
+          prev
+            ? {
+                ...prev,
+                averageRating: data.averageRating,
+                totalRatings: data.totalRatings,
+              }
+            : prev
+        );
+        toast({
+          title: "Success",
+          description: "Rating submitted successfully",
+        });
       }
     } catch (error) {
-      console.error('Error submitting rating:', error);
-      toast({ title: 'Error', description: 'Could not submit rating', variant: 'destructive' });
+      console.error("Error submitting rating:", error);
+      toast({
+        title: "Error",
+        description: "Could not submit rating",
+        variant: "destructive",
+      });
     } finally {
       setIsRating(false);
     }
@@ -191,11 +234,19 @@ export default function ArtworkDetail() {
 
   const handleRemoveRating = async () => {
     if (!currentUser?.userId) {
-      toast({ title: 'Error', description: 'You must be logged in to remove a rating', variant: 'destructive' });
+      toast({
+        title: "Error",
+        description: "You must be logged in to remove a rating",
+        variant: "destructive",
+      });
       return;
     }
     if (!userRating || !_id) {
-      toast({ title: 'Error', description: 'You have no rating to remove', variant: 'destructive' });
+      toast({
+        title: "Error",
+        description: "You have no rating to remove",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -204,12 +255,24 @@ export default function ArtworkDetail() {
       const data = await removeRating(_id);
       if (data.success) {
         setUserRating(0);
-        setArtwork(prev => (prev ? { ...prev, averageRating: data.averageRating, totalRatings: data.totalRatings } : prev));
-        toast({ title: 'Success', description: 'Rating removed successfully' });
+        setArtwork((prev) =>
+          prev
+            ? {
+                ...prev,
+                averageRating: data.averageRating,
+                totalRatings: data.totalRatings,
+              }
+            : prev
+        );
+        toast({ title: "Success", description: "Rating removed successfully" });
       }
     } catch (error) {
-      console.error('Error removing rating:', error);
-      toast({ title: 'Error', description: 'Could not remove rating', variant: 'destructive' });
+      console.error("Error removing rating:", error);
+      toast({
+        title: "Error",
+        description: "Could not remove rating",
+        variant: "destructive",
+      });
     } finally {
       setIsRemovingRating(false);
     }
@@ -223,13 +286,16 @@ export default function ArtworkDetail() {
             <Star
               key={star}
               className={`w-4 h-4 ${
-                star <= Math.floor(artwork?.averageRating || 0) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/40'
+                star <= Math.floor(artwork?.averageRating || 0)
+                  ? "fill-amber-400 text-amber-400"
+                  : "text-muted-foreground/40"
               }`}
             />
           ))}
         </div>
         <span className="text-sm text-muted-foreground">
-          {(artwork?.averageRating ?? 0).toFixed(1)} ({artwork?.totalRatings ?? 0} ratings)
+          {(artwork?.averageRating ?? 0).toFixed(1)} (
+          {artwork?.totalRatings ?? 0} ratings)
         </span>
       </div>
 
@@ -246,12 +312,22 @@ export default function ArtworkDetail() {
               disabled={isRating}
             >
               <Star
-                className={`w-5 h-5 ${star <= (hoveredStar || userRating) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/40'}`}
+                className={`w-5 h-5 ${
+                  star <= (hoveredStar || userRating)
+                    ? "fill-amber-400 text-amber-400"
+                    : "text-muted-foreground/40"
+                }`}
               />
             </button>
           ))}
           {userRating > 0 && (
-            <Button variant="outline" size="sm" className="ml-2" onClick={handleRemoveRating} disabled={isRemovingRating}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2"
+              onClick={handleRemoveRating}
+              disabled={isRemovingRating}
+            >
               Remove Rating
             </Button>
           )}
@@ -263,65 +339,112 @@ export default function ArtworkDetail() {
   /* ------------------------------- Misc helpers ------------------------------ */
 
   const getUploadDate = (): string => {
-    if (!artwork?.uploaded_at) return 'Unknown date';
+    if (!artwork?.uploaded_at) return "Unknown date";
     try {
       return new Date(artwork.uploaded_at).toLocaleDateString();
     } catch {
-      return 'Unknown date';
+      return "Unknown date";
     }
   };
 
   const getLocationString = (): string | null => {
-    if (!artwork?.location || Object.keys(artwork.location).length === 0) return null;
-    const parts = [artwork.location.city, artwork.location.region, artwork.location.country, artwork.location.continent].filter(Boolean);
-    return parts.length > 0 ? parts.join(', ') : null;
+    if (!artwork?.location || Object.keys(artwork.location).length === 0)
+      return null;
+    const parts = [
+      artwork.location.city,
+      artwork.location.region,
+      artwork.location.country,
+      artwork.location.continent,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : null;
+  };
+
+  const handleTagClick = (tag: string) => {
+    // Navigate to gallery page with tag-specific detailed search
+    navigate(`/gallery?tags=${encodeURIComponent(tag)}`);
   };
 
   /* --------------------------------- Comments -------------------------------- */
 
   const handleReact = async (commentId: number) => {
     if (!currentUser?.userId) {
-      toast({ title: 'Error', description: 'You must be logged in to react to comments', variant: 'destructive' });
+      toast({
+        title: "Error",
+        description: "You must be logged in to react to comments",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsReacting(true);
     try {
-      const data = await reactToComment({ commentId, userId: currentUser.userId });
+      const data = await reactToComment({
+        commentId,
+        userId: currentUser.userId,
+      });
       if (data?.success) {
-        setComments(prev => updateCommentReaction(prev, commentId, data));
+        setComments((prev) => updateCommentReaction(prev, commentId, data));
       }
     } catch (error) {
-      console.error('Error toggling reaction:', error);
-      toast({ title: 'Error', description: 'Could not react to comment', variant: 'destructive' });
+      console.error("Error toggling reaction:", error);
+      toast({
+        title: "Error",
+        description: "Could not react to comment",
+        variant: "destructive",
+      });
     } finally {
       setIsReacting(false);
     }
   };
 
-  const updateCommentReaction = (list: Comment[], commentId: number, reactionData: { reactionCount: number; isReacted: boolean }): Comment[] =>
-    list.map(c => {
-      if (c.commentId === commentId) return { ...c, reactionCount: reactionData.reactionCount, isReacted: reactionData.isReacted };
-      if (c.replies?.length) return { ...c, replies: updateCommentReaction(c.replies, commentId, reactionData) };
+  const updateCommentReaction = (
+    list: Comment[],
+    commentId: number,
+    reactionData: { reactionCount: number; isReacted: boolean }
+  ): Comment[] =>
+    list.map((c) => {
+      if (c.commentId === commentId)
+        return {
+          ...c,
+          reactionCount: reactionData.reactionCount,
+          isReacted: reactionData.isReacted,
+        };
+      if (c.replies?.length)
+        return {
+          ...c,
+          replies: updateCommentReaction(c.replies, commentId, reactionData),
+        };
       return c;
     });
 
   const handlePostComment = async () => {
     if (!currentUser?.userId) {
-      toast({ title: 'Error', description: 'You must be logged in to comment', variant: 'destructive' });
+      toast({
+        title: "Error",
+        description: "You must be logged in to comment",
+        variant: "destructive",
+      });
       return;
     }
     if (!_id) return;
 
     const content = replyingTo ? replyContent : newComment;
     if (!content.trim()) {
-      toast({ title: 'Error', description: 'Comment cannot be empty', variant: 'destructive' });
+      toast({
+        title: "Error",
+        description: "Comment cannot be empty",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsPosting(true);
     try {
-      const data = await postComment({ artifactId: _id, content, parentId: replyingTo || undefined });
+      const data = await postComment({
+        artifactId: _id,
+        content,
+        parentId: replyingTo || undefined,
+      });
 
       const newC: Comment = {
         commentId: data.commentId,
@@ -335,20 +458,28 @@ export default function ArtworkDetail() {
       };
 
       if (replyingTo) {
-        setComments(prev =>
-          prev.map(c => (c.commentId === replyingTo ? { ...c, replies: [newC, ...(c.replies || [])] } : c))
+        setComments((prev) =>
+          prev.map((c) =>
+            c.commentId === replyingTo
+              ? { ...c, replies: [newC, ...(c.replies || [])] }
+              : c
+          )
         );
-        setReplyContent('');
+        setReplyContent("");
         setReplyingTo(null);
       } else {
-        setComments(prev => [newC, ...prev]);
-        setNewComment('');
+        setComments((prev) => [newC, ...prev]);
+        setNewComment("");
       }
 
-      toast({ title: 'Success', description: 'Comment posted successfully' });
+      toast({ title: "Success", description: "Comment posted successfully" });
     } catch (error) {
-      console.error('Error posting comment:', error);
-      toast({ title: 'Error', description: 'Could not post comment', variant: 'destructive' });
+      console.error("Error posting comment:", error);
+      toast({
+        title: "Error",
+        description: "Could not post comment",
+        variant: "destructive",
+      });
     } finally {
       setIsPosting(false);
     }
@@ -363,12 +494,12 @@ export default function ArtworkDetail() {
         <div className="flex items-center gap-2">
           <h5 className="font-medium text-sm">{comment.username}</h5>
           <span className="text-xs text-muted-foreground">
-            {new Date(comment.createdAt).toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
+            {new Date(comment.createdAt).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
             })}
           </span>
         </div>
@@ -379,14 +510,18 @@ export default function ArtworkDetail() {
             onClick={() => handleReact(comment.commentId)}
             disabled={isReacting}
           >
-            <Heart className={`w-4 h-4 ${comment.isReacted ? 'fill-red-500 text-red-500' : ''}`} />
+            <Heart
+              className={`w-4 h-4 ${
+                comment.isReacted ? "fill-red-500 text-red-500" : ""
+              }`}
+            />
             <span>{comment.reactionCount}</span>
           </button>
           <button
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => {
               setReplyingTo(comment.commentId);
-              setReplyContent('');
+              setReplyContent("");
             }}
           >
             Reply
@@ -403,10 +538,18 @@ export default function ArtworkDetail() {
               rows={3}
             />
             <div className="flex gap-2">
-              <Button size="sm" onClick={handlePostComment} disabled={!replyContent.trim() || isPosting}>
-                {isPosting ? 'Posting...' : 'Post Reply'}
+              <Button
+                size="sm"
+                onClick={handlePostComment}
+                disabled={!replyContent.trim() || isPosting}
+              >
+                {isPosting ? "Posting..." : "Post Reply"}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setReplyingTo(null)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setReplyingTo(null)}
+              >
                 Cancel
               </Button>
             </div>
@@ -416,7 +559,12 @@ export default function ArtworkDetail() {
     </div>
   );
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (isLoading)
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
+      </div>
+    );
 
   if (!artwork) {
     return (
@@ -436,9 +584,10 @@ export default function ArtworkDetail() {
   const mainImage =
     artwork.image_url ||
     artwork.images?.[selectedImageIndex]?.baseimageurl ||
-    '/default-artifact.png';
+    "/default-artifact.png";
 
-  const artistName = artwork.artist_name || artwork.uploaded_by || 'Unknown artist';
+  const artistName =
+    artwork.artist_name || artwork.uploaded_by || "Unknown artist";
 
   return (
     <div className="min-h-screen bg-background">
@@ -459,9 +608,15 @@ export default function ArtworkDetail() {
               <div className="aspect-[4/3] relative">
                 <img
                   src={mainImage}
-                  alt={artwork.images?.[selectedImageIndex]?.alttext || artwork.title}
+                  alt={
+                    artwork.images?.[selectedImageIndex]?.alttext ||
+                    artwork.title
+                  }
                   className="w-full h-full object-cover"
-                  onError={(e) => ((e.target as HTMLImageElement).src = '/placeholder-art.jpg')}
+                  onError={(e) =>
+                    ((e.target as HTMLImageElement).src =
+                      "/placeholder-art.jpg")
+                  }
                 />
               </div>
             </Card>
@@ -472,16 +627,23 @@ export default function ArtworkDetail() {
                   <div
                     key={image.imageid || index}
                     className={`cursor-pointer group relative overflow-hidden rounded-lg border-2 transition-all duration-300 ${
-                      selectedImageIndex === index ? 'border-primary shadow-lg' : 'border-transparent hover:border-muted-foreground/30'
+                      selectedImageIndex === index
+                        ? "border-primary shadow-lg"
+                        : "border-transparent hover:border-muted-foreground/30"
                     }`}
                     onClick={() => setSelectedImageIndex(index)}
                   >
                     <div className="aspect-square overflow-hidden">
                       <img
                         src={image.baseimageurl}
-                        alt={image.alttext || `${artwork.title} view ${index + 1}`}
+                        alt={
+                          image.alttext || `${artwork.title} view ${index + 1}`
+                        }
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        onError={(e) => ((e.target as HTMLImageElement).src = '/placeholder-art.jpg')}
+                        onError={(e) =>
+                          ((e.target as HTMLImageElement).src =
+                            "/placeholder-art.jpg")
+                        }
                       />
                     </div>
                   </div>
@@ -492,14 +654,37 @@ export default function ArtworkDetail() {
             <Card className="mt-6">
               <CardContent className="p-6">
                 <h3 className="font-semibold mb-4">Description</h3>
-                <p className="text-muted-foreground">{artwork.description || 'No description available'}</p>
+                <p className="text-muted-foreground">
+                  {artwork.description || "No description available"}
+                </p>
                 {artwork.tags && artwork.tags.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {artwork.tags.map((tag, index) => (
-                      <Badge key={index} variant="secondary">
-                        {tag}
-                      </Badge>
-                    ))}
+                  <div className="mt-6 p-3 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="p-1.5 bg-primary/10 rounded-full">
+                        <Hash className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-base text-foreground">
+                          Tags
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          Click to explore similar artworks
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {artwork.tags.map((tag, index) => (
+                        <Badge
+                          key={index}
+                          variant="secondary"
+                          className="text-sm px-3 py-1.5 cursor-pointer hover:bg-primary hover:text-primary-foreground transition-all duration-200 font-medium border border-transparent hover:border-primary hover:shadow-md hover:scale-102 transform"
+                          onClick={() => handleTagClick(tag)}
+                        >
+                          <Hash className="w-3 h-3 mr-1" />
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -509,7 +694,9 @@ export default function ArtworkDetail() {
               <CardContent className="p-6">
                 <div className="flex items-center gap-2 mb-6">
                   <MessageCircle className="h-5 w-5" />
-                  <h3 className="font-semibold">Comments ({comments.length})</h3>
+                  <h3 className="font-semibold">
+                    Comments ({comments.length})
+                  </h3>
                 </div>
 
                 <div className="space-y-6">
@@ -535,8 +722,11 @@ export default function ArtworkDetail() {
                     className="w-full text-sm p-2 border rounded min-h-[100px]"
                   />
                   <div className="flex justify-end">
-                    <Button onClick={handlePostComment} disabled={!newComment.trim() || isPosting}>
-                      {isPosting ? 'Posting...' : 'Post Comment'}
+                    <Button
+                      onClick={handlePostComment}
+                      disabled={!newComment.trim() || isPosting}
+                    >
+                      {isPosting ? "Posting..." : "Post Comment"}
                     </Button>
                   </div>
                 </div>
@@ -552,8 +742,9 @@ export default function ArtworkDetail() {
                   <h2 className="text-2xl font-bold mb-2">{artwork.title}</h2>
                   <p className="text-muted-foreground">
                     {artistName}
-                    {(artwork.culture || artwork.period) && ' • '}
-                    {artwork.culture} {artwork.culture && artwork.period && '•'} {artwork.period}
+                    {(artwork.culture || artwork.period) && " • "}
+                    {artwork.culture} {artwork.culture && artwork.period && "•"}{" "}
+                    {artwork.period}
                   </p>
                 </div>
 
@@ -567,33 +758,43 @@ export default function ArtworkDetail() {
                   {artwork.medium && (
                     <div>
                       <h4 className="font-medium text-sm">Medium</h4>
-                      <p className="text-sm text-muted-foreground">{artwork.medium}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {artwork.medium}
+                      </p>
                     </div>
                   )}
                   {artwork.dimension && (
                     <div>
                       <h4 className="font-medium text-sm">Dimensions</h4>
-                      <p className="text-sm text-muted-foreground">{artwork.dimension}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {artwork.dimension}
+                      </p>
                     </div>
                   )}
                   {artwork.department && (
                     <div>
                       <h4 className="font-medium text-sm">Department</h4>
-                      <p className="text-sm text-muted-foreground">{artwork.department}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {artwork.department}
+                      </p>
                     </div>
                   )}
                   {artwork.exact_found_date && (
                     <div>
                       <h4 className="font-medium text-sm">Date</h4>
                       <p className="text-sm text-muted-foreground">
-                        {new Date(artwork.exact_found_date).toLocaleDateString()}
+                        {new Date(
+                          artwork.exact_found_date
+                        ).toLocaleDateString()}
                       </p>
                     </div>
                   )}
                   {locationString && (
                     <div>
                       <h4 className="font-medium text-sm">Location</h4>
-                      <p className="text-sm text-muted-foreground">{locationString}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {locationString}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -625,7 +826,7 @@ export default function ArtworkDetail() {
                   <Button variant="outline" size="sm" asChild>
                     <a
                       href={mainImage}
-                      download={`${artwork.title.replace(/\s+/g, '_')}.jpg`}
+                      download={`${artwork.title.replace(/\s+/g, "_")}.jpg`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

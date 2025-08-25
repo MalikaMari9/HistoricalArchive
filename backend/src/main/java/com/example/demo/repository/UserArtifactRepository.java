@@ -41,5 +41,7 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 	 UserArtifact findByUserIdAndArtifactId(Integer userId, String artifactId);
 	 
 	 List<UserArtifact> findByUserIdAndArtifactIdIn(Integer userId, List<String> artifactIds);
+
+	 List<UserArtifact> findByArtifactIdIn(List<String> artifactIds);
 }
 

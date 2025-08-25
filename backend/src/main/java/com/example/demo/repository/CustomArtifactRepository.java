@@ -1,10 +1,11 @@
 package com.example.demo.repository;
 
-import com.example.demo.entity.Artifact;
+import java.time.LocalDate;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.time.LocalDate;
+import com.example.demo.entity.Artifact;
 
 public interface CustomArtifactRepository {
     Page<Artifact> searchArtifacts(
@@ -16,6 +17,7 @@ public interface CustomArtifactRepository {
             String period,
             String medium,
             String artistName,
+            String tags,
             LocalDate fromDate,
             LocalDate toDate,
             Pageable pageable

@@ -14,9 +14,11 @@ interface Artifact {
   title: string;
   artist: string;
   period: string;
-  imageUrl: string; // The URL for the artifact image
+  imageUrl?: string;
+  images?: { baseimageurl: string }[];
   averageRating: number;
 }
+
 
 export default function Home() {
   const [featuredArtifacts, setFeaturedArtifacts] = useState<Artifact[]>([]);
@@ -151,16 +153,27 @@ export default function Home() {
                 key={artifact._id}
                 className="group overflow-hidden hover:shadow-elegant transition-all duration-300 hover:-translate-y-2"
               >
+                
                 <div className="relative aspect-[3/4] overflow-hidden">
-                  <img
-                    src={artifact.imageUrl}
-                    alt={artifact.title}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
+<img
+  src={
+    artifact.imageUrl?.trim()
+    || artifact.images?.[0]?.baseimageurl?.trim()
+    || '/default-artifact.png'
+  }
+
+  alt={artifact.title}
+  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+/>
+
+                  
+                  
+                  
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   <Badge className="absolute top-4 left-4 bg-primary/90">
                     {artifact.period}
                   </Badge>
+                  
                 </div>
 
                 <CardContent className="p-6">

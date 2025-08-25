@@ -2,17 +2,20 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.CommentRequest;
 import com.example.demo.dto.ReactionRequest;
+import com.example.demo.entity.Artifact;
 import com.example.demo.entity.Comment;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserArtifact;
 import com.example.demo.repository.CommentRepository;
 import com.example.demo.repository.UserArtifactRepository;
+import com.example.demo.repository.ArtifactRepository;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +36,10 @@ public class CommentController {
 
     @Autowired
     private UserArtifactRepository userArtifactRepository;
+    
+    @Autowired
+    private ArtifactRepository artifactRepository;
+
 
     @GetMapping("/artifact/{artifactId}")
     public ResponseEntity<?> getCommentsByArtifact(
@@ -217,6 +224,82 @@ public class CommentController {
             logger.error("Failed to toggle reaction", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to toggle reaction"));
+        }
+    }
+    
+    @GetMapping("/curator/recent")
+    public ResponseEntity<?> getRecentCommentsForCurator(HttpSession session) {
+        try {
+            User user = (User) session.getAttribute("loggedInUser");
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Authentication required"));
+            }
+
+            // 1. Get curator's artifacts from MongoDB (same pattern as CuratorDashboardController)
+            List<Artifact> curatorArtifacts = artifactRepository.findByUploaded_by(user.getUsername());
+            
+            if (curatorArtifacts.isEmpty()) {
+                return ResponseEntity.ok(Collections.emptyList());
+            }
+
+            // 2. Get artifact IDs
+            List<String> artifactIds = curatorArtifacts.stream()
+                    .map(Artifact::getId)
+                    .collect(Collectors.toList());
+
+            // 3. Get UserArtifact records for these artifacts
+            List<UserArtifact> userArtifacts = userArtifactRepository.findByArtifactIdIn(artifactIds);
+            
+            // 4. Get UserArtifact IDs to fetch comments
+            List<Integer> userArtifactIds = userArtifacts.stream()
+                    .map(UserArtifact::getUserArtifactId)
+                    .collect(Collectors.toList());
+
+            if (userArtifactIds.isEmpty()) {
+                return ResponseEntity.ok(Collections.emptyList());
+            }
+
+            // 5. Get recent comments for these UserArtifact records
+            List<Comment> recentComments = commentRepository.findByUserArtifact_UserArtifactIdInOrderByCreatedAtDesc(
+                userArtifactIds, PageRequest.of(0, 5));
+            
+            // 6. Create mapping for artifact titles
+            Map<String, String> artifactTitleMap = curatorArtifacts.stream()
+                    .collect(Collectors.toMap(Artifact::getId, Artifact::getTitle));
+            
+            // 7. Create mapping for UserArtifact to Artifact ID
+            Map<Integer, String> userArtifactToArtifactIdMap = userArtifacts.stream()
+                    .collect(Collectors.toMap(UserArtifact::getUserArtifactId, UserArtifact::getArtifactId));
+
+            // 8. Build response
+            List<Map<String, Object>> response = recentComments.stream()
+                .map(comment -> {
+                    Map<String, Object> commentMap = new HashMap<>();
+                    commentMap.put("commentId", comment.getCommentId());
+                    commentMap.put("comment", comment.getComment());
+                    
+                    // Get artifact ID from UserArtifact mapping
+                    String artifactId = userArtifactToArtifactIdMap.get(comment.getUserArtifact().getUserArtifactId());
+                    commentMap.put("artifactId", artifactId);
+                    
+                    // Get title from artifact mapping
+                    String artifactTitle = artifactTitleMap.getOrDefault(artifactId, "Artwork");
+                    commentMap.put("artifactTitle", artifactTitle);
+                    
+                    commentMap.put("username", comment.getUser().getUsername());
+                    commentMap.put("createdAt", comment.getCreatedAt());
+                    commentMap.put("isCuratorArtwork", true);
+                    
+                    return commentMap;
+                })
+                .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to fetch recent comments for curator", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to fetch recent comments"));
         }
     }
 }

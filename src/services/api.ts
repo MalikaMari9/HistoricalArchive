@@ -1,6 +1,6 @@
 // src/services/api.ts
+import { User } from "@/hooks/useAuth";
 import axios from "axios";
-import { User } from "@/hooks/useAuth"; 
 /**
  * Axios API client configuration
  * - Base URL: Spring Boot backend at http://localhost:8080/api
@@ -24,15 +24,15 @@ api.interceptors.request.use((config) => {
 
 api.defaults.withCredentials = true; // Let's check this again
 
-
 /* ------------------------------- Auth APIs -------------------------------- */
 
-export const login = async (payload: { username: string; password: string }) => {
+export const login = async (payload: {
+  username: string;
+  password: string;
+}) => {
   // session cookie set by backend
   await api.post("/users/login", payload, { withCredentials: true });
 };
-
-
 
 export const getMe = async (): Promise<User> => {
   const res = await api.get("/users/me", { withCredentials: true });
@@ -42,7 +42,9 @@ export const getMe = async (): Promise<User> => {
 /* ----------------------------- Auth (signup) ----------------------------- */
 
 export const checkUsername = async (username: string): Promise<boolean> => {
-  const res = await api.get<boolean>("/check-username", { params: { username } });
+  const res = await api.get<boolean>("/check-username", {
+    params: { username },
+  });
   return res.data; // true if taken
 };
 
@@ -78,7 +80,6 @@ export const registerUser = async (payload: {
   }
 };
 
-
 // --- Password change ---
 export type ChangePasswordPayload = {
   oldPassword: string;
@@ -87,12 +88,15 @@ export type ChangePasswordPayload = {
 };
 
 export const changeMyPassword = async (payload: ChangePasswordPayload) => {
-  const res = await api.post<{ message?: string }>("/users/change-password", payload, {
-    withCredentials: true,
-  });
+  const res = await api.post<{ message?: string }>(
+    "/users/change-password",
+    payload,
+    {
+      withCredentials: true,
+    }
+  );
   return res.data;
 };
-
 
 /* -------------------------------------------------------------------------- */
 /*                               DASHBOARD APIS                               */
@@ -151,7 +155,6 @@ export const countAnnouncementsAdmin = async (opts?: {
   });
   return res.data.count;
 };
-
 
 /* -------------------------------------------------------------------------- */
 /*                                 USERS (Admin)                              */
@@ -293,7 +296,9 @@ export const adminRejectReview = async (
   id: number,
   reason?: string
 ): Promise<void> => {
-  await api.patch(`/admin/review/${id}/reject`, undefined, { params: { reason } });
+  await api.patch(`/admin/review/${id}/reject`, undefined, {
+    params: { reason },
+  });
 };
 
 /** Top artworks (by views/rating) for Admin Reports */
@@ -322,7 +327,7 @@ export interface PageResponse<T> {
   totalElements: number;
   totalPages: number;
   number: number; // current page
-  size: number;   // page size
+  size: number; // page size
 }
 
 export const adminListArtworks = async (
@@ -418,6 +423,7 @@ export interface SearchFilters {
   period?: string;
   medium?: string;
   artistName?: string;
+  tags?: string;
   fromDate?: string;
   toDate?: string;
   page?: number;
@@ -448,22 +454,26 @@ export const searchDetailedArts = async (
   filters: Omit<SearchFilters, "sortBy"> & { page?: number; size?: number }
 ): Promise<ArtifactResponse> => {
   try {
+    const params = {
+      anyField: filters.anyField || "",
+      title: filters.title || "",
+      category: filters.category || "",
+      culture: filters.culture || "",
+      department: filters.department || "",
+      period: filters.period || "",
+      medium: filters.medium || "",
+      artistName: filters.artistName || "",
+      tags: filters.tags || "",
+      fromDate: filters.fromDate || undefined,
+      toDate: filters.toDate || undefined,
+      page: filters.page ?? 0,
+      size: filters.size ?? 6,
+    };
+
     const res = await api.get<ArtifactResponse>("/artifacts/search", {
-      params: {
-        anyField: filters.anyField || "",
-        title: filters.title || "",
-        category: filters.category || "",
-        culture: filters.culture || "",
-        department: filters.department || "",
-        period: filters.period || "",
-        medium: filters.medium || "",
-        artistName: filters.artistName || "",
-        fromDate: filters.fromDate || undefined,
-        toDate: filters.toDate || undefined,
-        page: filters.page ?? 0,
-        size: filters.size ?? 6,
-      },
+      params,
     });
+
     return res.data;
   } catch (err) {
     console.error("Error during detailed artifact search:", err);
@@ -485,7 +495,9 @@ export async function getBookmarks() {
 
 export async function addBookmark(artifactId: string) {
   const res = await fetch(
-    `http://localhost:8080/api/bookmarks?artifactId=${encodeURIComponent(artifactId)}`,
+    `http://localhost:8080/api/bookmarks?artifactId=${encodeURIComponent(
+      artifactId
+    )}`,
     { method: "POST", credentials: "include" }
   );
   if (!res.ok) throw new Error("Already bookmarked or not authorized");
@@ -494,7 +506,9 @@ export async function addBookmark(artifactId: string) {
 
 export async function removeBookmark(artifactId: string) {
   const res = await fetch(
-    `http://localhost:8080/api/bookmarks?artifactId=${encodeURIComponent(artifactId)}`,
+    `http://localhost:8080/api/bookmarks?artifactId=${encodeURIComponent(
+      artifactId
+    )}`,
     { method: "DELETE", credentials: "include" }
   );
   if (!res.ok && res.status !== 204) {
@@ -504,7 +518,9 @@ export async function removeBookmark(artifactId: string) {
 
 export async function isBookmarked(artifactId: string) {
   const res = await fetch(
-    `http://localhost:8080/api/bookmarks/check?artifactId=${encodeURIComponent(artifactId)}`,
+    `http://localhost:8080/api/bookmarks/check?artifactId=${encodeURIComponent(
+      artifactId
+    )}`,
     { credentials: "include" }
   );
   if (!res.ok) throw new Error("Failed to check bookmark");
@@ -592,8 +608,6 @@ export const countAnnouncements = async (): Promise<number> => {
   return res.data.count;
 };
 
-
-
 /* ----------------------------- Artifacts/Detail ---------------------------- */
 
 export interface ArtifactDetail {
@@ -622,8 +636,12 @@ export interface ArtifactDetail {
 }
 
 /** Get a single artifact by ID (path param) */
-export const getArtifactById = async (artifactId: string): Promise<ArtifactDetail> => {
-  const res = await api.get<ArtifactDetail>(`/artifacts/${encodeURIComponent(artifactId)}`);
+export const getArtifactById = async (
+  artifactId: string
+): Promise<ArtifactDetail> => {
+  const res = await api.get<ArtifactDetail>(
+    `/artifacts/${encodeURIComponent(artifactId)}`
+  );
   return res.data;
 };
 
@@ -636,8 +654,12 @@ export interface RatingDTO {
 }
 
 /** Get rating summary (and userRating if logged in) for an artifact */
-export const getArtifactRatingInfo = async (artifactId: string): Promise<RatingDTO> => {
-  const res = await api.get<RatingDTO>(`/ratings/artifact/${encodeURIComponent(artifactId)}`);
+export const getArtifactRatingInfo = async (
+  artifactId: string
+): Promise<RatingDTO> => {
+  const res = await api.get<RatingDTO>(
+    `/ratings/artifact/${encodeURIComponent(artifactId)}`
+  );
   return res.data;
 };
 
@@ -656,7 +678,9 @@ export const submitRating = async (payload: {
 };
 
 /** Remove current user's rating for an artifact */
-export const removeRating = async (artifactId: string): Promise<{
+export const removeRating = async (
+  artifactId: string
+): Promise<{
   success: boolean;
   averageRating: number;
   totalRatings: number;
@@ -664,7 +688,6 @@ export const removeRating = async (artifactId: string): Promise<{
   const res = await api.delete(`/ratings/${encodeURIComponent(artifactId)}`);
   return res.data;
 };
-
 
 /* -------------------------------- Bookmarks -------------------------------- */
 
@@ -679,7 +702,9 @@ export const listBookmarks = async (): Promise<BookmarkDTO[]> => {
 };
 
 /** Add a bookmark (backend expects artifactId as request param) */
-export const createBookmark = async (artifactId: string): Promise<BookmarkDTO> => {
+export const createBookmark = async (
+  artifactId: string
+): Promise<BookmarkDTO> => {
   const res = await api.post<BookmarkDTO>("/bookmarks", null, {
     params: { artifactId },
   });
@@ -696,7 +721,9 @@ export const deleteBookmark = async (artifactId: string): Promise<void> => {
 
 /** Check if a specific artifact is bookmarked */
 export const checkBookmark = async (artifactId: string): Promise<boolean> => {
-  const res = await api.get<boolean>("/bookmarks/check", { params: { artifactId } });
+  const res = await api.get<boolean>("/bookmarks/check", {
+    params: { artifactId },
+  });
   return res.data;
 };
 
@@ -714,8 +741,12 @@ export interface CommentDTO {
   replies?: CommentDTO[];
 }
 
-export const getCommentsByArtifact = async (artifactId: string): Promise<CommentDTO[]> => {
-  const res = await api.get<CommentDTO[]>(`/comments/artifact/${encodeURIComponent(artifactId)}`);
+export const getCommentsByArtifact = async (
+  artifactId: string
+): Promise<CommentDTO[]> => {
+  const res = await api.get<CommentDTO[]>(
+    `/comments/artifact/${encodeURIComponent(artifactId)}`
+  );
   return res.data;
 };
 
@@ -728,14 +759,17 @@ export const postComment = async (payload: {
   return res.data as CommentDTO & { success?: boolean };
 };
 
-export const reactToComment = async (payload: { commentId: number; userId: number }) => {
-  const res = await api.post<{ success: boolean; reactionCount: number; isReacted: boolean }>(
-    "/comments/react",
-    payload
-  );
+export const reactToComment = async (payload: {
+  commentId: number;
+  userId: number;
+}) => {
+  const res = await api.post<{
+    success: boolean;
+    reactionCount: number;
+    isReacted: boolean;
+  }>("/comments/react", payload);
   return res.data;
 };
-
 
 /* -------------------------------------------------------------------------- */
 /*                                UPLOAD SESSION                              */
@@ -744,7 +778,9 @@ export const reactToComment = async (payload: { commentId: number; userId: numbe
 /** Check if there's an active upload session; returns the username or null */
 export const checkUploadSession = async (): Promise<string | null> => {
   // Backend returns plain text like: "Active session for user: <name>"
-  const res = await api.get<string>("/upload/check-session", { responseType: "text" as any });
+  const res = await api.get<string>("/upload/check-session", {
+    responseType: "text" as any,
+  });
   const text = typeof res.data === "string" ? res.data : String(res.data);
   const marker = "user: ";
   if (text.includes("Active session") && text.includes(marker)) {
@@ -768,7 +804,9 @@ export const uploadLogout = async (): Promise<void> => {
 };
 
 /** Upload artifact with multipart form (images + metadata) */
-export const uploadArtifact = async (form: FormData): Promise<{ id: string } & Record<string, any>> => {
+export const uploadArtifact = async (
+  form: FormData
+): Promise<{ id: string } & Record<string, any>> => {
   const res = await api.post("/upload", form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
@@ -822,9 +860,12 @@ export const listMyArtworks = async (
   page = 0,
   size = 25
 ): Promise<PageResponse<MyArtworkDTO>> => {
-  const res = await api.get<PageResponse<MyArtworkDTO>>("/artifacts/my-artworks", {
-    params: { page, size },
-  });
+  const res = await api.get<PageResponse<MyArtworkDTO>>(
+    "/artifacts/my-artworks",
+    {
+      params: { page, size },
+    }
+  );
   return res.data;
 };
 
@@ -833,14 +874,17 @@ export const deleteArtifact = async (id: string): Promise<void> => {
   await api.delete(`/artifacts/${encodeURIComponent(id)}`);
 };
 
-
 /** Update an artwork (full or partial) */
-export const updateArtifact = async (id: string, payload: ArtifactUpdatePayload) => {
+export const updateArtifact = async (
+  id: string,
+  payload: ArtifactUpdatePayload
+) => {
   // If your backend expects PUT for full updates, keep PUT.
   // If it supports partial updates, PATCH is often nicer. Use what your API expects.
   const res = await api.put(`/artifacts/${encodeURIComponent(id)}`, payload);
   return res.data;
 };
+
 
 /* ----------------------------- Curator Dashboard ----------------------------- */
 
@@ -850,7 +894,7 @@ export interface CuratorArtworkItem {
   id: number;
   title: string;
   status: CuratorStatus | string; // backend might send varied casing
-  submissionDate: string;         // ISO
+  submissionDate: string; // ISO
 }
 
 export interface CuratorStats {
@@ -869,6 +913,21 @@ export const curatorListArtworks = async (): Promise<CuratorArtworkItem[]> => {
 /** Aggregated stats for the dashboard header/cards */
 export const curatorGetStats = async (): Promise<CuratorStats> => {
   const res = await api.get<CuratorStats>("/curator/stats");
+  return res.data;
+};
+
+export interface RecentCommentDTO {
+  commentId: number;
+  comment: string;
+  artifactId: string;
+  artifactTitle: string;
+  username: string;
+  createdAt: string;
+  isCuratorArtwork: boolean;
+}
+
+export const getRecentCommentsForCurator = async (): Promise<RecentCommentDTO[]> => {
+  const res = await api.get<RecentCommentDTO[]>('/comments/curator/recent');
   return res.data;
 };
 
@@ -905,8 +964,8 @@ export interface ProfessorPendingCurator {
   username: string;
   email: string;
   fname: string;
-  dob: string;          // ISO
-  submittedAt: string;  // ISO
+  dob: string; // ISO
+  submittedAt: string; // ISO
 }
 
 export interface ProfessorPendingArtifact {
@@ -914,16 +973,24 @@ export interface ProfessorPendingArtifact {
   title: string;
   category: string;
   curatorUsername: string; // backend name; we'll map to uploaded_by in the UI
-  uploaded_at: string;     // ISO
+  uploaded_at: string; // ISO
 }
 
-export const professorListPendingArtworks = async (): Promise<ProfessorPendingArtwork[]> => {
-  const res = await api.get<ProfessorPendingArtwork[]>("/professor/dashboard/pending-artworks");
+export const professorListPendingArtworks = async (): Promise<
+  ProfessorPendingArtwork[]
+> => {
+  const res = await api.get<ProfessorPendingArtwork[]>(
+    "/professor/dashboard/pending-artworks"
+  );
   return res.data;
 };
 
-export const professorListRecentDecisions = async (): Promise<ProfessorRecentDecision[]> => {
-  const res = await api.get<ProfessorRecentDecision[]>("/professor/dashboard/recent-decisions");
+export const professorListRecentDecisions = async (): Promise<
+  ProfessorRecentDecision[]
+> => {
+  const res = await api.get<ProfessorRecentDecision[]>(
+    "/professor/dashboard/recent-decisions"
+  );
   return res.data;
 };
 
@@ -932,13 +999,21 @@ export const professorGetStats = async (): Promise<ProfessorStats> => {
   return res.data;
 };
 
-export const professorListPendingCurators = async (): Promise<ProfessorPendingCurator[]> => {
-  const res = await api.get<ProfessorPendingCurator[]>("/professor/dashboard/pending-curators");
+export const professorListPendingCurators = async (): Promise<
+  ProfessorPendingCurator[]
+> => {
+  const res = await api.get<ProfessorPendingCurator[]>(
+    "/professor/dashboard/pending-curators"
+  );
   return res.data;
 };
 
-export const professorListPendingArtifacts = async (): Promise<ProfessorPendingArtifact[]> => {
-  const res = await api.get<ProfessorPendingArtifact[]>("/professor/dashboard/pending-artifacts");
+export const professorListPendingArtifacts = async (): Promise<
+  ProfessorPendingArtifact[]
+> => {
+  const res = await api.get<ProfessorPendingArtifact[]>(
+    "/professor/dashboard/pending-artifacts"
+  );
   return res.data;
 };
 
@@ -949,14 +1024,14 @@ export interface ProfessorPendingCurator {
   username: string;
   email: string;
   fname: string;
-  dob: string;                // ISO
+  dob: string; // ISO
   educationalBackground: string;
   certification: string;
   certificationPath: string;
   personalExperience: string;
   portfolioLink: string;
   motivationReason: string;
-  submittedAt: string;        // ISO
+  submittedAt: string; // ISO
 }
 
 export const applyForCurator = async (form: FormData): Promise<void> => {
@@ -966,10 +1041,22 @@ export const applyForCurator = async (form: FormData): Promise<void> => {
   });
 };
 
-export const professorListPendingCuratorsApplication = async (opts?: { signal?: AbortSignal }) => {
-  const res = await api.get<ProfessorPendingCurator[]>("/professor/dashboard/pending-curators", {
-    signal: opts?.signal as any,
-  });
+
+
+export const getCuratorApplicationStatus = async (): Promise< "pending" | "accepted" | "rejected"> => {
+  const res = await api.get("/curator/status", { withCredentials: true });
+  return res.data;
+};
+
+export const professorListPendingCuratorsApplication = async (opts?: {
+  signal?: AbortSignal;
+}) => {
+  const res = await api.get<ProfessorPendingCurator[]>(
+    "/professor/dashboard/pending-curators",
+    {
+      signal: opts?.signal as any,
+    }
+  );
   return res.data;
 };
 
@@ -981,18 +1068,17 @@ export const professorRejectCuratorApp = async (id: number, reason: string) => {
   await api.post(`/professor/dashboard/applications/${id}/reject`, { reason });
 };
 
-
 /* ---------------------- Professor: Review Art Submissions ---------------------- */
 
 export type AppStatus = "pending" | "accepted" | "rejected";
 
 export interface ReviewArtifactDto {
   submissionId: number;
-  id: string;                // artifact Mongo id
+  id: string; // artifact Mongo id
   title: string;
   curatorUsername: string;
   category: string;
-  submittedAt: string;       // ISO
+  submittedAt: string; // ISO
   status: AppStatus | string;
   images: Array<{ baseimageurl?: string; image_url?: string }>;
   description?: string;
@@ -1020,29 +1106,50 @@ export const professorListReviewArtifacts = async (
   size = 6,
   opts?: { signal?: AbortSignal }
 ): Promise<{ content: ReviewArtifactDto[]; total: number }> => {
-  const res = await api.get<ReviewArtifactDto[]>("/professor/dashboard/review-artifacts", {
-    params: { status, page, size },
-    signal: opts?.signal as any,
-  });
+  const res = await api.get<ReviewArtifactDto[]>(
+    "/professor/dashboard/review-artifacts",
+    {
+      params: { status, page, size },
+      signal: opts?.signal as any,
+    }
+  );
   // backend sends total count in header
-  const total = parseInt(res.headers["x-total-count"] ?? res.headers["X-Total-Count"] ?? "0", 10);
+  const total = parseInt(
+    res.headers["x-total-count"] ?? res.headers["X-Total-Count"] ?? "0",
+    10
+  );
   return { content: res.data, total };
 };
 
 /** Counts grouped by status */
-export const professorReviewArtifactCounts = async (): Promise<Record<AppStatus, number>> => {
-  const res = await api.get<Record<AppStatus, number>>("/professor/dashboard/review-artifacts/counts");
+export const professorReviewArtifactCounts = async (): Promise<
+  Record<AppStatus, number>
+> => {
+  const res = await api.get<Record<AppStatus, number>>(
+    "/professor/dashboard/review-artifacts/counts"
+  );
   return res.data;
 };
 
 /** Accept a submission */
-export const professorAcceptArtifact = async (submissionId: number): Promise<void> => {
-  await api.post(`/professor/dashboard/review-artifacts/${submissionId}/accept`, {});
+export const professorAcceptArtifact = async (
+  submissionId: number
+): Promise<void> => {
+  await api.post(
+    `/professor/dashboard/review-artifacts/${submissionId}/accept`,
+    {}
+  );
 };
 
 /** Reject a submission (requires reason) */
-export const professorRejectArtifact = async (submissionId: number, reason: string): Promise<void> => {
-  await api.post(`/professor/dashboard/review-artifacts/${submissionId}/reject`, { reason });
+export const professorRejectArtifact = async (
+  submissionId: number,
+  reason: string
+): Promise<void> => {
+  await api.post(
+    `/professor/dashboard/review-artifacts/${submissionId}/reject`,
+    { reason }
+  );
 };
 
 /* ------------------------------- Profile API ------------------------------- */
@@ -1054,8 +1161,12 @@ export interface ProfileDto {
 }
 
 /** Get current user's profile for edit screen */
-export const getMyProfile = async (opts?: { signal?: AbortSignal }): Promise<ProfileDto> => {
-  const res = await api.get<ProfileDto>("/profile/edit", { signal: opts?.signal as any });
+export const getMyProfile = async (opts?: {
+  signal?: AbortSignal;
+}): Promise<ProfileDto> => {
+  const res = await api.get<ProfileDto>("/profile/edit", {
+    signal: opts?.signal as any,
+  });
   return res.data;
 };
 
@@ -1065,14 +1176,15 @@ export const getMyProfile = async (opts?: { signal?: AbortSignal }): Promise<Pro
  *   - "profile": JSON string (username, email, and optional profilePicture: null to remove)
  *   - "file": image binary (optional)
  */
-export const updateMyProfile = async (formData: FormData): Promise<ProfileDto> => {
+export const updateMyProfile = async (
+  formData: FormData
+): Promise<ProfileDto> => {
   const res = await api.put<ProfileDto>("/profile", formData, {
     headers: { "Content-Type": "multipart/form-data" },
     withCredentials: true,
   });
   return res.data;
 };
-
 
 /* ------------------------------ Profile (view) ------------------------------ */
 
@@ -1087,11 +1199,15 @@ export interface ViewUserProfile {
 }
 
 /** Get the current user's profile for view page */
-export const getMyPublicProfile = async (opts?: { signal?: AbortSignal }): Promise<ViewUserProfile> => {
-  const res = await api.get<ViewUserProfile>("/profile", { signal: opts?.signal as any, withCredentials: true });
+export const getMyPublicProfile = async (opts?: {
+  signal?: AbortSignal;
+}): Promise<ViewUserProfile> => {
+  const res = await api.get<ViewUserProfile>("/profile", {
+    signal: opts?.signal as any,
+    withCredentials: true,
+  });
   return res.data;
 };
-
 
 /* ----------------------------- Notifications ------------------------------ */
 
@@ -1107,20 +1223,31 @@ export interface NotificationDto {
 }
 
 /** List current user's notifications */
-export const listNotifications = async (opts?: { signal?: AbortSignal }): Promise<NotificationDto[]> => {
+export const listNotifications = async (opts?: {
+  signal?: AbortSignal;
+  unreadOnly?: boolean;
+}): Promise<NotificationDto[]> => {
   const res = await api.get<NotificationDto[]>("/notifications", {
+    params: { unreadOnly: opts?.unreadOnly ?? false },
     signal: opts?.signal as any,
     withCredentials: true,
   });
   return res.data;
 };
 
+
 /** Mark all notifications as read */
 export const markAllNotificationsRead = async (): Promise<void> => {
-  await api.put("/notifications/mark-all-read", undefined, { withCredentials: true });
+  await api.put("/notifications/mark-all-read", undefined, {
+    withCredentials: true,
+  });
 };
 
 // (Optional) mark a single notification as read if you add UI later
 export const markNotificationRead = async (id: number): Promise<void> => {
-  await api.put(`/notifications/${id}/read`, undefined, { withCredentials: true });
+  await api.put(`/notifications/${id}/read`, undefined, {
+    withCredentials: true,
+  });
 };
+
+

@@ -20,19 +20,30 @@ public class NotificationController {
     @GetMapping
     public List<Notification> getNotifications(
             HttpSession session,
-            @RequestParam(value = "unreadOnly", required = false, defaultValue = "false") boolean unreadOnly
+            @RequestParam(value = "unreadOnly", required = false) Boolean unreadOnly
     ) {
         User user = (User) session.getAttribute("loggedInUser");
         if (user == null) {
             throw new RuntimeException("Login required");
         }
 
-        if (unreadOnly) {
-            return notificationRepo.findByRecipientAndIsReadFalseOrderByCreatedAtDesc(user);
+        List<Notification> result;
+
+        if (Boolean.TRUE.equals(unreadOnly)) {
+            result = notificationRepo.findByRecipientAndIsReadFalseOrderByCreatedAtDesc(user);
+            System.out.println("DEBUG: Returning " + result.size() + " unread notifications");
         } else {
-            return notificationRepo.findByRecipientOrderByCreatedAtDesc(user);
+            result = notificationRepo.findByRecipientOrderByCreatedAtDesc(user);
+            long readCount = result.stream().filter(Notification::isRead).count();
+            long unreadCount = result.size() - readCount;
+            System.out.println("DEBUG: Returning " + result.size() + " total notifications");
+            System.out.println("        Read: " + readCount + " | Unread: " + unreadCount);
         }
+
+        return result;
     }
+
+
 
     @PutMapping("/{id}/read")
     public void markAsRead(@PathVariable Integer id, HttpSession session) {

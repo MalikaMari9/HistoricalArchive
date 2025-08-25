@@ -13,10 +13,16 @@ import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCrypt;
-
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
 @RestController
@@ -25,10 +31,42 @@ public class UserController {
     @Autowired
     private UserRepository userRepository;
 
+    private static final String UPLOAD_DIR = "uploads/profile-pictures/";
     private static final String DEFAULT_PROFILE_PATH = "/images/default.png";
+    
+    // Initialize upload directory
+    static {
+        try {
+            Files.createDirectories(Paths.get(UPLOAD_DIR));
+        } catch (IOException e) {
+            throw new RuntimeException("Could not create upload directory", e);
+        }
+    }
 
-    @PostMapping("/api/users/register")
-    public ResponseEntity<?> registerUser(@RequestBody SignUpRequest signUpRequest) {
+    // Handle JSON registration (without profile picture)
+    @PostMapping(value = "/api/users/register", consumes = {"application/json"})
+    public ResponseEntity<?> registerUserJson(@RequestBody SignUpRequest signUpRequest) {
+        return registerUser(signUpRequest, null);
+    }
+
+    // Handle multipart form data registration (with optional profile picture)
+    @PostMapping(value = "/api/users/register", consumes = {"multipart/form-data"})
+    public ResponseEntity<?> registerUserWithFile(
+            @RequestParam("username") String username,
+            @RequestParam("email") String email,
+            @RequestParam("password") String password,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+        
+        SignUpRequest signUpRequest = new SignUpRequest();
+        signUpRequest.setUsername(username);
+        signUpRequest.setEmail(email);
+        signUpRequest.setPassword(password);
+        
+        return registerUser(signUpRequest, file);
+    }
+
+    // Common registration logic
+    private ResponseEntity<?> registerUser(SignUpRequest signUpRequest, MultipartFile file) {
         if (userRepository.existsByUsername(signUpRequest.getUsername())) {
             return ResponseEntity.badRequest().body("Error: Username is already taken!");
         }
@@ -42,13 +80,38 @@ public class UserController {
         user.setEmail(signUpRequest.getEmail().trim().toLowerCase());
         user.setPassword(BCrypt.hashpw(signUpRequest.getPassword(), BCrypt.gensalt()));
         user.setRole(UserRole.visitor);
-        user.setProfilePath(DEFAULT_PROFILE_PATH);
         user.setCreatedAt(LocalDateTime.now());
+
+        // Handle profile picture upload
+        if (file != null && !file.isEmpty()) {
+            try {
+                // Ensure upload directory exists
+                Path uploadPath = Paths.get(UPLOAD_DIR);
+                if (!Files.exists(uploadPath)) {
+                    Files.createDirectories(uploadPath);
+                }
+                
+                // Generate unique filename
+                String fileName = UUID.randomUUID().toString() + "_" + file.getOriginalFilename();
+                Path filePath = uploadPath.resolve(fileName);
+                
+                // Save file
+                Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+                
+                // Set relative path in database
+                user.setProfilePath("/" + UPLOAD_DIR + fileName);
+            } catch (IOException e) {
+                return ResponseEntity.badRequest().body("Error: Failed to upload profile picture");
+            }
+        } else {
+            user.setProfilePath(DEFAULT_PROFILE_PATH);
+        }
 
         userRepository.save(user);
         return ResponseEntity.ok("User registered successfully!");
     }
 
+    // Keep the rest of your existing methods unchanged...
     @PostMapping("/api/users/login")
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest, HttpSession session) {
         User dbUser = userRepository.findByUsername(loginRequest.getUsername());

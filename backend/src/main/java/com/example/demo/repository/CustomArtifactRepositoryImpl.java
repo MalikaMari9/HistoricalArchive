@@ -1,7 +1,8 @@
 package com.example.demo.repository;
 
-import com.example.demo.entity.Artifact;
-import com.example.demo.repository.CustomArtifactRepository;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -12,9 +13,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
+import com.example.demo.entity.Artifact;
 
 public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
 
@@ -28,7 +27,7 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
     @Override
     public Page<Artifact> searchArtifacts(String anyField, String title, String category, String culture,
                                           String department, String period, String medium, String artistName,
-                                          LocalDate fromDate, LocalDate toDate, Pageable pageable) {
+                                          String tags, LocalDate fromDate, LocalDate toDate, Pageable pageable) {
         Query query = new Query().with(pageable);
         List<Criteria> specificFieldCriteria = new ArrayList<>();
 
@@ -52,6 +51,9 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
         }
         if (StringUtils.hasText(artistName)) {
             specificFieldCriteria.add(Criteria.where("artist_name").regex(artistName, "i"));
+        }
+        if (StringUtils.hasText(tags)) {
+            specificFieldCriteria.add(Criteria.where("tags").regex(tags, "i"));
         }
         if (fromDate != null && toDate != null) {
             specificFieldCriteria.add(Criteria.where("exact_found_date").gte(fromDate).lte(toDate));
@@ -110,7 +112,7 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
                 Criteria.where("period").regex(search, "i"),
                 Criteria.where("medium").regex(search, "i"),
                 Criteria.where("artist_name").regex(search, "i"),
-                Criteria.where("tags").elemMatch(Criteria.where("").regex(search, "i"))
+                Criteria.where("tags").regex(search, "i")
 
             );
             query.addCriteria(orCriteria);

@@ -53,12 +53,12 @@ import { ReviewArts as ProfessorReviewArts } from "./pages/professor/ReviewArts"
 //import ReviewCurator from "./pages/professor/ReviewCurator";
 
 // --- Pages: Artifact ---
+import { AuthProvider } from "@/hooks/useAuth";
 import ArtworkDetail from "./pages/artifacts/ArtworkDetail";
+import MapGallery from "./pages/MapGallery";
 
 // --- Axios Config ---
 axios.defaults.withCredentials = true;
-import { AuthProvider } from '@/hooks/useAuth';
-
 
 // --- React Query Client ---
 
@@ -75,76 +75,80 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-       <AuthProvider>
-        <Routes>
-          {/* Main Website Routes */}
-          <Route path="/" element={<DashboardLayout />}>
-            <Route index element={<Index />} />
-            <Route path="home" element={<Home />} />
-            <Route path="gallery" element={<Gallery />} />
-            <Route path="artwork/:_id" element={<ArtworkDetail />} />
-            <Route path="about" element={<About />} />
-            <Route path="contact" element={<Contact />} />
-            <Route path="signin" element={<SignIn />} />
-            <Route path="signup" element={<SignUp />} />
+        <AuthProvider>
+          <Routes>
+            {/* Main Website Routes */}
+            <Route path="/" element={<DashboardLayout />}>
+              <Route index element={<Index />} />
+              <Route path="home" element={<Home />} />
+              <Route path="gallery" element={<Gallery />} />
+              <Route path="map-gallery" element={<MapGallery />} />
+              <Route path="artwork/:_id" element={<ArtworkDetail />} />
+              <Route path="about" element={<About />} />
+              <Route path="contact" element={<Contact />} />
+              <Route path="signin" element={<SignIn />} />
+              <Route path="signup" element={<SignUp />} />
 
-            <Route path="/bookmarks" element={<Bookmarks />} />
+              <Route path="/bookmarks" element={<Bookmarks />} />
 
-            <Route path="change-password" element={<ChangePassword />} />
-            <Route path="forgot-password" element={<ForgotPassword />} />
-            <Route path="upgrade-curator" element={<UpgradeCurator />} />
+              <Route path="change-password" element={<ChangePassword />} />
+              <Route path="forgot-password" element={<ForgotPassword />} />
+              <Route path="upgrade-curator" element={<UpgradeCurator />} />
 
-            <Route path="visitor" element={<Gallery />} />
-          </Route>
+              <Route path="visitor" element={<Gallery />} />
+            </Route>
 
-          <Route path="/profile" element={<DashboardLayout />}>
-            <Route index element={<ViewProfile />} />
-            <Route path="edit" element={<EditProfile />} />
-            <Route path="watched-later" element={<WatchedLater />} />
-          </Route>
+            <Route path="/profile" element={<DashboardLayout />}>
+              <Route index element={<ViewProfile />} />
+              <Route path="edit" element={<EditProfile />} />
+              <Route path="watched-later" element={<WatchedLater />} />
+            </Route>
 
-          {/* Admin Dashboard Routes */}
-          <Route path="/admin" element={<DashboardLayout />}>
-            <Route index element={<AdminDashboard />} />
-            <Route path="users" element={<ManageUsers />} />
-            <Route path="artworks" element={<AdminManageArtworks />} />
-            {/* Review arts removed */}
-            <Route path="announcements" element={<ManageAnnouncements />} />
-            <Route path="announcements/new" element={<MakeAnnouncement />} />
-          </Route>
-          {/* Curator Dashboard Routes */}
-          <Route path="/curator" element={<DashboardLayout />}>
-            <Route index element={<CuratorDashboard />} />
-            <Route path="upload" element={<UploadArt />} />
-            <Route path="artworks" element={<ManageArtworks />} />
-          </Route>
-          <Route path="/curator/artworks/edit/:id" element={<EditArtwork />} />
-
-          {/* Notifications Route - Outside main Layout to avoid navbar duplication */}
-          <Route path="/notifications" element={<Notifications />} />
-
-          {/* Professor Dashboard Routes */}
-          <Route path="/professor" element={<DashboardLayout />}>
-            <Route index element={<ProfessorDashboard />} />
-            <Route path="review" element={<ProfessorReviewArts />} />
-
+            {/* Admin Dashboard Routes */}
+            <Route path="/admin" element={<DashboardLayout />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="users" element={<ManageUsers />} />
+              <Route path="artworks" element={<AdminManageArtworks />} />
+              {/* Review arts removed */}
+              <Route path="announcements" element={<ManageAnnouncements />} />
+              <Route path="announcements/new" element={<MakeAnnouncement />} />
+            </Route>
+            {/* Curator Dashboard Routes */}
+            <Route path="/curator" element={<DashboardLayout />}>
+              <Route index element={<CuratorDashboard />} />
+              <Route path="upload" element={<UploadArt />} />
+              <Route path="artworks" element={<ManageArtworks />} />
+            </Route>
             <Route
-              path="/professor/review-artifacts/:status/:submissionId"
-              element={<ProfessorReviewArts />}
+              path="/curator/artworks/edit/:id"
+              element={<EditArtwork />}
             />
-            <Route
-              path="curator-applications"
-              element={<CuratorApplications />}
-            />
-            <Route
-              path="/professor/curators/review/:id"
-              element={<CuratorApplications />}
-            />
-          </Route>
 
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+            {/* Notifications Route - Outside main Layout to avoid navbar duplication */}
+            <Route path="/notifications" element={<Notifications />} />
+
+            {/* Professor Dashboard Routes */}
+            <Route path="/professor" element={<DashboardLayout />}>
+              <Route index element={<ProfessorDashboard />} />
+              <Route path="review" element={<ProfessorReviewArts />} />
+
+              <Route
+                path="/professor/review-artifacts/:status/:submissionId"
+                element={<ProfessorReviewArts />}
+              />
+              <Route
+                path="curator-applications"
+                element={<CuratorApplications />}
+              />
+              <Route
+                path="/professor/curators/review/:id"
+                element={<CuratorApplications />}
+              />
+            </Route>
+
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

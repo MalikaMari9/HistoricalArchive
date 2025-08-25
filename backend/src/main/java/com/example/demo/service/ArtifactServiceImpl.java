@@ -1,7 +1,8 @@
 package com.example.demo.service;
 
-import com.example.demo.entity.Artifact;
-import com.example.demo.repository.ArtifactRepository;
+import java.time.LocalDate;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -9,8 +10,8 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.util.List;
+import com.example.demo.entity.Artifact;
+import com.example.demo.repository.ArtifactRepository;
 
 @Service
 public class ArtifactServiceImpl implements ArtifactService {
@@ -27,9 +28,9 @@ public class ArtifactServiceImpl implements ArtifactService {
     @Override
     public Page<Artifact> searchArtifacts(String anyField, String title, String category, String culture,
                                           String department, String period, String medium, String artistName,
-                                          LocalDate fromDate, LocalDate toDate, Pageable pageable) {
+                                          String tags, LocalDate fromDate, LocalDate toDate, Pageable pageable) {
         return artifactRepository.searchArtifacts(
-            anyField, title, category, culture, department, period, medium, artistName, fromDate, toDate, pageable
+            anyField, title, category, culture, department, period, medium, artistName, tags, fromDate, toDate, pageable
         );
     }
     

@@ -1,12 +1,12 @@
 package com.example.demo.service;
 
-import com.example.demo.entity.Artifact;
-import com.example.demo.repository.ArtifactRepository;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.beans.factory.annotation.Autowired;
 import java.time.LocalDate;
 import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+import com.example.demo.entity.Artifact;
 
 
 
@@ -21,6 +21,7 @@ public interface ArtifactService {
         String period,
         String medium,
         String artistName,
+        String tags,
         LocalDate fromDate,
         LocalDate toDate,
         Pageable pageable
