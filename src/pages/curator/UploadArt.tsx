@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Upload, Image as ImageIcon, CalendarIcon, Lock, Loader2,
+  ArrowLeft,
+  Upload,
+  Image as ImageIcon,
+  CalendarIcon,
+  Lock,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,11 +25,9 @@ import {
   fetchCultureSuggestions,
   fetchDepartmentSuggestions,
   fetchPeriodSuggestions,
-  checkUploadSession,
-  uploadLogin,
-  uploadLogout,
   uploadArtifact,
 } from "@/services/api";
+import LocationPicker, { LocationInfo } from "./LocationPicker";
 
 interface UploadFormData {
   title: string;
@@ -41,11 +44,10 @@ interface UploadFormData {
 }
 
 export default function UploadArtifact() {
-   const { user, ready } = useAuthGuard();
+  const { user, ready } = useAuthGuard();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [formData, setFormData] = useState<UploadFormData>({
     title: "",
     description: "",
@@ -60,86 +62,64 @@ export default function UploadArtifact() {
     files: [],
   });
 
+  const [locationInfo, setLocationInfo] = useState<LocationInfo>({
+    placename: "",
+    city: "",
+    country: "",
+  
+    latitude: undefined,
+    longitude: undefined,
+  });
+
   const [previews, setPreviews] = useState<string[]>([]);
   const [foundDate, setFoundDate] = useState<Date>();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showLoginPopup, setShowLoginPopup] = useState(false);
-  const [usernameInput, setUsernameInput] = useState("");
 
-  // DB-driven suggestions
+  // Suggestions
   const [categories, setCategories] = useState<string[]>([]);
   const [cultures, setCultures] = useState<string[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-// Restrict Visitors
-useEffect(() => {
-  if (ready && user.role === "visitor") {
-    navigate("/403");
-  }
-}, [ready, user, navigate]);
 
-  // On mount: check session + load suggestions
+  // Restrict Visitors
   useEffect(() => {
-    (async () => {
+    if (ready && user && user.role === "visitor") {
+      navigate("/403");
+    }
+  }, [ready, user, navigate]);
+
+  // Load suggestions on mount
+  useEffect(() => {
+    const loadSuggestions = async () => {
+      setIsLoadingSuggestions(true);
       try {
-        const username = await checkUploadSession();
-        if (username) setCurrentUser(username);
-      } catch {
-        // silent—session check is best-effort
+        const [categoriesData, culturesData, departmentsData, periodsData] =
+          await Promise.all([
+            fetchCategorySuggestions().catch(() => []),
+            fetchCultureSuggestions().catch(() => []),
+            fetchDepartmentSuggestions().catch(() => []),
+            fetchPeriodSuggestions().catch(() => []),
+          ]);
+
+        setCategories(categoriesData.filter(Boolean).sort());
+        setCultures(culturesData.filter(Boolean).sort());
+        setDepartments(departmentsData.filter(Boolean).sort());
+        setPeriods(periodsData.filter(Boolean).sort());
+      } catch (error) {
+        console.error("Error loading suggestions:", error);
+        toast({
+          title: "Warning",
+          description: "Could not load field suggestions from database",
+          variant: "default",
+        });
+      } finally {
+        setIsLoadingSuggestions(false);
       }
-    })();
+    };
+
     loadSuggestions();
-  }, []);
-
-  const loadSuggestions = async () => {
-    setIsLoadingSuggestions(true);
-    try {
-      const [categoriesData, culturesData, departmentsData, periodsData] = await Promise.all([
-        fetchCategorySuggestions().catch(() => []),
-        fetchCultureSuggestions().catch(() => []),
-        fetchDepartmentSuggestions().catch(() => []),
-        fetchPeriodSuggestions().catch(() => []),
-      ]);
-
-      setCategories(categoriesData.filter(Boolean).sort());
-      setCultures(culturesData.filter(Boolean).sort());
-      setDepartments(departmentsData.filter(Boolean).sort());
-      setPeriods(periodsData.filter(Boolean).sort());
-    } catch (error) {
-      console.error("Error loading suggestions:", error);
-      toast({
-        title: "Warning",
-        description: "Could not load field suggestions from database",
-        variant: "default",
-      });
-    } finally {
-      setIsLoadingSuggestions(false);
-    }
-  };
-
-  const handleLogin = async (username: string) => {
-    if (!username.trim()) return;
-    try {
-      await uploadLogin(username);
-      setCurrentUser(username);
-      setShowLoginPopup(false);
-      setUsernameInput("");
-      toast({ title: "Login successful", description: `You are now logged in as ${username}` });
-    } catch {
-      toast({ title: "Login failed", description: "Could not establish session", variant: "destructive" });
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await uploadLogout();
-      setCurrentUser(null);
-      toast({ title: "Logged out", description: "You have been logged out" });
-    } catch {
-      toast({ title: "Logout failed", description: "Could not end session properly", variant: "destructive" });
-    }
-  };
+  }, [toast]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -148,18 +128,30 @@ useEffect(() => {
     // Validate & limit
     const validFiles = files.filter((file) => {
       if (!file.type.startsWith("image/")) {
-        toast({ title: "Invalid file type", description: "Only image files are allowed", variant: "destructive" });
+        toast({
+          title: "Invalid file type",
+          description: "Only image files are allowed",
+          variant: "destructive",
+        });
         return false;
       }
       if (file.size > 10 * 1024 * 1024) {
-        toast({ title: "File too large", description: "Maximum file size is 10MB", variant: "destructive" });
+        toast({
+          title: "File too large",
+          description: "Maximum file size is 10MB",
+          variant: "destructive",
+        });
         return false;
       }
       return true;
     });
 
     if (formData.files.length + validFiles.length > 5) {
-      toast({ title: "Too many files", description: "Maximum 5 images allowed", variant: "destructive" });
+      toast({
+        title: "Too many files",
+        description: "Maximum 5 images allowed",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -187,19 +179,31 @@ useEffect(() => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!currentUser) {
-      toast({ title: "Authentication required", description: "Please login to upload artwork", variant: "destructive" });
-      setShowLoginPopup(true);
+    if (!user?.username) {
+      toast({
+        title: "Authentication required",
+        description: "Please login to upload artwork",
+        variant: "destructive",
+      });
+      navigate("/login");
       return;
     }
 
     // Basic validation
     if (!formData.files.length) {
-      toast({ title: "No images", description: "Please upload at least one image", variant: "destructive" });
+      toast({
+        title: "No images",
+        description: "Please upload at least one image",
+        variant: "destructive",
+      });
       return;
     }
     if (!formData.title || !formData.description || !formData.category) {
-      toast({ title: "Missing required fields", description: "Please fill in all required fields", variant: "destructive" });
+      toast({
+        title: "Missing required fields",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -214,7 +218,7 @@ useEffect(() => {
       fd.append("culture", formData.culture);
       fd.append("department", formData.department);
       fd.append("period", formData.period);
-      fd.append("location", formData.location);
+      fd.append("location", JSON.stringify(locationInfo));
       fd.append("medium", formData.medium);
 
       if (foundDate) {
@@ -238,69 +242,32 @@ useEffect(() => {
       setIsSubmitting(false);
     }
   };
-  // Restrict Visitors
+
+  if (!ready) return null;
 
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-4">
-            <Button variant="outline" size="sm" onClick={() => navigate(-1)} disabled={isSubmitting}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(-1)}
+              disabled={isSubmitting}
+            >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
             <h1 className="text-3xl font-bold text-foreground">Upload New Artwork</h1>
           </div>
 
-          {currentUser ? (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Logged in as: {currentUser}</span>
-              <Button variant="outline" size="sm" onClick={handleLogout} disabled={isSubmitting}>
-                Logout
-              </Button>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => setShowLoginPopup(true)}>
-              Login
-            </Button>
-          )}
+          <div className="text-sm text-muted-foreground">
+            {user?.username && <>Logged in as: {user.username}</>}
+          </div>
         </div>
 
-        {/* Suggestions Loading */}
-        {isLoadingSuggestions && (
-          <div className="flex items-center justify-center py-4 mb-4">
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            <span className="text-sm text-muted-foreground">Loading field suggestions...</span>
-          </div>
-        )}
-
-        {/* Login Popup */}
-        {showLoginPopup && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-background p-6 rounded-lg max-w-md w-full">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Login Required</h3>
-                <p className="text-sm text-muted-foreground">Please enter your username to upload artwork</p>
-                <Input
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  placeholder="Enter your username"
-                  onKeyDown={(e) => e.key === "Enter" && handleLogin(usernameInput)}
-                />
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={() => setShowLoginPopup(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={() => handleLogin(usernameInput)} disabled={!usernameInput.trim()}>
-                    Login
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {currentUser ? (
+        {user?.username ? (
           <div className="max-w-2xl mx-auto">
             <Card>
               <CardHeader>
@@ -321,7 +288,11 @@ useEffect(() => {
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             {previews.map((preview, index) => (
                               <div key={index} className="relative group">
-                                <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-32 object-cover rounded-lg" />
+                                <img
+                                  src={preview}
+                                  alt={`Preview ${index + 1}`}
+                                  className="w-full h-32 object-cover rounded-lg"
+                                />
                                 <Button
                                   type="button"
                                   size="sm"
@@ -358,7 +329,9 @@ useEffect(() => {
                               Select Images
                             </Label>
                           </div>
-                          <p className="text-sm text-muted-foreground">JPEG, PNG up to 10MB each (max 5 images)</p>
+                          <p className="text-sm text-muted-foreground">
+                            JPEG, PNG up to 10MB each (max 5 images)
+                          </p>
                         </div>
                       )}
                       <Input
@@ -380,7 +353,9 @@ useEffect(() => {
                       <Input
                         id="title"
                         value={formData.title}
-                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, title: e.target.value })
+                        }
                         placeholder="Enter artwork title"
                         required
                         disabled={isSubmitting}
@@ -392,7 +367,9 @@ useEffect(() => {
                       <Textarea
                         id="description"
                         value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, description: e.target.value })
+                        }
                         placeholder="Describe your artwork..."
                         rows={4}
                         required
@@ -405,7 +382,9 @@ useEffect(() => {
                       <AutocompleteInput
                         id="category"
                         value={formData.category}
-                        onChange={(value) => setFormData({ ...formData, category: value })}
+                        onChange={(value) =>
+                          setFormData({ ...formData, category: value })
+                        }
                         suggestions={categories}
                         disabled={isSubmitting || isLoadingSuggestions}
                       />
@@ -419,7 +398,9 @@ useEffect(() => {
                       <Input
                         id="medium"
                         value={formData.medium}
-                        onChange={(e) => setFormData({ ...formData, medium: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, medium: e.target.value })
+                        }
                         placeholder="e.g., Oil on canvas, Bronze"
                         disabled={isSubmitting}
                       />
@@ -430,7 +411,9 @@ useEffect(() => {
                       <Input
                         id="dimension"
                         value={formData.dimension}
-                        onChange={(e) => setFormData({ ...formData, dimension: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, dimension: e.target.value })
+                        }
                         placeholder="e.g., 24 x 36 inches"
                         disabled={isSubmitting}
                       />
@@ -441,7 +424,9 @@ useEffect(() => {
                       <Input
                         id="tags"
                         value={formData.tags}
-                        onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, tags: e.target.value })
+                        }
                         placeholder="abstract, modern, landscape (comma separated)"
                         disabled={isSubmitting}
                       />
@@ -453,7 +438,9 @@ useEffect(() => {
                         <AutocompleteInput
                           id="culture"
                           value={formData.culture}
-                          onChange={(value) => setFormData({ ...formData, culture: value })}
+                          onChange={(value) =>
+                            setFormData({ ...formData, culture: value })
+                          }
                           suggestions={cultures}
                           disabled={isSubmitting || isLoadingSuggestions}
                         />
@@ -464,7 +451,9 @@ useEffect(() => {
                         <AutocompleteInput
                           id="period"
                           value={formData.period}
-                          onChange={(value) => setFormData({ ...formData, period: value })}
+                          onChange={(value) =>
+                            setFormData({ ...formData, period: value })
+                          }
                           suggestions={periods}
                           disabled={isSubmitting || isLoadingSuggestions}
                         />
@@ -476,19 +465,19 @@ useEffect(() => {
                       <AutocompleteInput
                         id="department"
                         value={formData.department}
-                        onChange={(value) => setFormData({ ...formData, department: value })}
+                        onChange={(value) =>
+                          setFormData({ ...formData, department: value })
+                        }
                         suggestions={departments}
                         disabled={isSubmitting || isLoadingSuggestions}
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="location">Current Location</Label>
-                      <Input
-                        id="location"
-                        value={formData.location}
-                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                        placeholder="e.g., Museum of Modern Art, New York"
+                      <Label>Current Location</Label>
+                      <LocationPicker
+                        value={locationInfo}
+                        onChange={setLocationInfo}
                         disabled={isSubmitting}
                       />
                     </div>
@@ -499,15 +488,28 @@ useEffect(() => {
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
-                            className={cn("w-full justify-start text-left font-normal", !foundDate && "text-muted-foreground")}
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !foundDate && "text-muted-foreground"
+                            )}
                             disabled={isSubmitting}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {foundDate ? format(foundDate, "PPP") : <span>Select a date</span>}
+                            {foundDate ? (
+                              format(foundDate, "PPP")
+                            ) : (
+                              <span>Select a date</span>
+                            )}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={foundDate} onSelect={setFoundDate} initialFocus disabled={isSubmitting} />
+                          <Calendar
+                            mode="single"
+                            selected={foundDate}
+                            onSelect={setFoundDate}
+                            initialFocus
+                            disabled={isSubmitting}
+                          />
                         </PopoverContent>
                       </Popover>
                     </div>
@@ -515,7 +517,11 @@ useEffect(() => {
 
                   {/* Submit */}
                   <div className="flex gap-4 pt-4">
-                    <Button type="submit" className="flex-1" disabled={isSubmitting || isLoadingSuggestions}>
+                    <Button
+                      type="submit"
+                      className="flex-1"
+                      disabled={isSubmitting || isLoadingSuggestions}
+                    >
                       {isSubmitting ? (
                         <>
                           <Upload className="h-4 w-4 mr-2 animate-spin" />
@@ -528,7 +534,12 @@ useEffect(() => {
                         </>
                       )}
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => navigate(-1)} disabled={isSubmitting}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => navigate(-1)}
+                      disabled={isSubmitting}
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -541,8 +552,10 @@ useEffect(() => {
             <div className="space-y-4">
               <Lock className="h-12 w-12 mx-auto text-muted-foreground" />
               <h3 className="text-xl font-medium">Authentication Required</h3>
-              <p className="text-muted-foreground">Please login to upload artwork</p>
-              <Button onClick={() => setShowLoginPopup(true)}>Login</Button>
+              <p className="text-muted-foreground">
+                Please login to upload artwork
+              </p>
+              <Button onClick={() => navigate("/login")}>Go to Login</Button>
             </div>
           </div>
         )}

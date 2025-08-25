@@ -6,6 +6,7 @@ import com.example.demo.repository.NotificationRepository;
 import com.example.demo.repository.UserArtifactRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.util.ArtifactIdGenerator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
@@ -96,6 +97,8 @@ public class CuratorUploadController {
             @RequestParam(value = "exact_found_date", required = false) LocalDate exactFoundDate,
             @RequestParam(value = "medium", required = false) String medium,
             @RequestParam(value = "artistName", required = false) String artistName,
+            @RequestParam(value = "location", required = false) String locationJson,
+
             @RequestParam("files") List<MultipartFile> files,
             HttpSession session
     ) throws IOException {
@@ -104,6 +107,9 @@ public class CuratorUploadController {
         if (loggedInUser == null) {
             return ResponseEntity.status(401).build();
         }
+        
+ 
+
 
         // 1) Create + save Artifact (Mongo)
         Artifact artifact = createArtifact(
@@ -114,6 +120,17 @@ public class CuratorUploadController {
                 files,
                 loggedInUser
         );
+        
+        if (locationJson != null && !locationJson.isBlank()) {
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                LocationInfo location = mapper.readValue(locationJson, LocationInfo.class);
+                artifact.setLocation(location);
+            } catch (Exception e) {
+                System.err.println("Failed to parse location JSON: " + e.getMessage());
+            }
+        }
+        
         Artifact savedArtifact = artifactRepository.save(artifact);
 
         // 2) Create + save UserArtifact (Postgres)

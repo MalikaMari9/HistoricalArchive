@@ -35,33 +35,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Fetch session user on first load
  useEffect(() => {
-  const hasSession = document.cookie.includes("JSESSIONID=");
 
-  if (!hasSession) {
-    setLoading(false);
-    return;
-  }
+const fetchUser = async () => {
+  try {
+    const res = await fetch("http://localhost:8080/api/users/me", {
+      credentials: "include",
+    });
 
-  const fetchUser = async () => {
-    try {
-      const res = await fetch("http://localhost:8080/api/users/me", {
-        credentials: "include",
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
-      } else {
-        setUser(null);
-      }
-    } catch {
+    if (res.ok) {
+      const data = await res.json();
+      setUser(data);
+    } else {
       setUser(null);
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch {
+    setUser(null);
+  } finally {
+    setLoading(false);
+  }
+};
 
-  fetchUser();
+fetchUser();
+
 }, []);
 
 

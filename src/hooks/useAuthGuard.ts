@@ -7,14 +7,18 @@ export function useAuthGuard() {
   const { user, loading } = useAuth();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading) return; // Wait for auth check
 
     if (!user) {
+      // Only redirect AFTER loading completes
       navigate("/signin", { replace: true });
     } else if (user.status === "RESTRICTED") {
       navigate("/403", { replace: true });
     }
   }, [user, loading, navigate]);
 
-  return { user, ready: !loading };
+  return {
+    user,
+    ready: !loading && !!user,
+  };
 }

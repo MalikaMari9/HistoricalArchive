@@ -9,6 +9,7 @@ import com.example.demo.entity.UserRole;
 import com.example.demo.entity.UserStatus;
 import com.example.demo.repository.UserRepository;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -158,24 +159,38 @@ public class UserController {
     }
     
     @GetMapping("/api/users/me")
-    public ResponseEntity<?> getCurrentUser(HttpSession session) {
-        User loggedInUser = (User) session.getAttribute("loggedInUser");
+    public ResponseEntity<?> getCurrentUser(HttpServletRequest request) {
+        HttpSession session = request.getSession(false); // don't create a new one
 
-        if (loggedInUser == null) {
+        if (session == null) {
+            System.out.println("⚠️ No session found");
+            return ResponseEntity.status(401).body("No active session");
+        }
+
+        System.out.println("✅ Session exists, ID: " + session.getId());
+
+        Object userObj = session.getAttribute("loggedInUser");
+        if (userObj == null) {
+            System.out.println("❌ Session exists but loggedInUser is null");
             return ResponseEntity.status(401).body("Not logged in");
         }
+
+        User loggedInUser = (User) userObj;
+        System.out.println("👤 Logged-in user: " + loggedInUser.getUsername());
 
         UserSessionDTO userSessionDTO = new UserSessionDTO(
             loggedInUser.getUsername(),
             loggedInUser.getEmail(),
             loggedInUser.getRole().name()
-            
         );
         userSessionDTO.setUserId(loggedInUser.getUserId());
         userSessionDTO.setStatus(loggedInUser.getStatus().name());
         userSessionDTO.setProfilePicture(loggedInUser.getProfilePath());
+
         return ResponseEntity.ok(userSessionDTO);
     }
+
+
 
     
     @PostMapping("/api/logout")

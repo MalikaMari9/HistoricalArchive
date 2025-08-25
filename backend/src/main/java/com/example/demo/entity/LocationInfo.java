@@ -1,6 +1,7 @@
 package com.example.demo.entity;
 
 public class LocationInfo {
+	private String placename = "";
     private String river = "";
     private String city = "";
     private String region = "";
@@ -10,6 +11,17 @@ public class LocationInfo {
     private Double longitude;
     
     public LocationInfo() {}
+
+    
+	public String getPlacename() {
+		return placename;
+	}
+
+
+	public void setPlacename(String placename) {
+		this.placename = placename;
+	}
+
 
 	public String getRiver() {
 		return river;
