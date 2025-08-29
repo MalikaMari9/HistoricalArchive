@@ -13,23 +13,51 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.util.StringUtils;
 
+import com.example.demo.entity.ApplicationStatus;
 import com.example.demo.entity.Artifact;
+import com.example.demo.entity.UserArtifact;
 
 public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
 
     private final MongoTemplate mongoTemplate;
+    private final UserArtifactRepository userArtifactRepository;
 
     @Autowired
-    public CustomArtifactRepositoryImpl(MongoTemplate mongoTemplate) {
+    public CustomArtifactRepositoryImpl(MongoTemplate mongoTemplate, UserArtifactRepository userArtifactRepository) {
         this.mongoTemplate = mongoTemplate;
+        this.userArtifactRepository = userArtifactRepository;
     }
 
     @Override
     public Page<Artifact> searchArtifacts(String anyField, String title, String category, String culture,
                                           String department, String period, String medium, String artistName,
-                                          String tags, LocalDate fromDate, LocalDate toDate, Pageable pageable) {
+                                          String tags, LocalDate fromDate, LocalDate toDate,
+                                          String locationQuery, Double latitude, Double longitude, Double radius,
+                                          String city, String country, Pageable pageable) {
         Query query = new Query().with(pageable);
         List<Criteria> specificFieldCriteria = new ArrayList<>();
+        
+        // Get curator artifacts that are pending or rejected and should be excluded
+        List<UserArtifact> pendingArtifacts = userArtifactRepository.findByStatus(ApplicationStatus.pending);
+        List<UserArtifact> rejectedArtifacts = userArtifactRepository.findByStatus(ApplicationStatus.rejected);
+        
+        List<String> pendingOrRejectedArtifactIds = new ArrayList<>();
+        pendingArtifacts.forEach(ua -> pendingOrRejectedArtifactIds.add(ua.getArtifactId()));
+        rejectedArtifacts.forEach(ua -> pendingOrRejectedArtifactIds.add(ua.getArtifactId()));
+        
+        System.out.println("🚫 Excluding " + pendingOrRejectedArtifactIds.size() + " pending/rejected curator artifacts from search");
+        if (!pendingOrRejectedArtifactIds.isEmpty()) {
+            System.out.println("Excluded artifact IDs: " + pendingOrRejectedArtifactIds);
+            System.out.println("🔴 CRITICAL: Using _id field (not id) to exclude artifacts from MongoDB");
+        } else {
+            System.out.println("✅ No pending/rejected artifacts found - all artifacts will be shown");
+        }
+        
+        // Create status filter criteria (separate from search criteria)
+        Criteria statusFilterCriteria = null;
+        if (!pendingOrRejectedArtifactIds.isEmpty()) {
+            statusFilterCriteria = Criteria.where("_id").nin(pendingOrRejectedArtifactIds);
+        }
 
         if (StringUtils.hasText(title)) {
             specificFieldCriteria.add(Criteria.where("title").regex(title, "i"));
@@ -62,6 +90,38 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
         } else if (toDate != null) {
             specificFieldCriteria.add(Criteria.where("exact_found_date").lte(toDate));
         }
+        
+        // Location filtering
+        if (StringUtils.hasText(locationQuery)) {
+            // Search by location name/placename
+            specificFieldCriteria.add(
+                new Criteria().orOperator(
+                    Criteria.where("location.placename").regex(locationQuery, "i"),
+                    Criteria.where("location.city").regex(locationQuery, "i"),
+                    Criteria.where("location.country").regex(locationQuery, "i")
+                )
+            );
+        }
+        
+        if (StringUtils.hasText(city)) {
+            specificFieldCriteria.add(Criteria.where("location.city").regex(city, "i"));
+        }
+        
+        if (StringUtils.hasText(country)) {
+            specificFieldCriteria.add(Criteria.where("location.country").regex(country, "i"));
+        }
+        
+        // Geographic proximity search
+        if (latitude != null && longitude != null && radius != null) {
+            // Convert radius from km to degrees (approximation: 1 degree ≈ 111km)
+            double radiusInDegrees = radius / 111.0;
+            specificFieldCriteria.add(
+                Criteria.where("location.latitude").gte(latitude - radiusInDegrees).lte(latitude + radiusInDegrees)
+            );
+            specificFieldCriteria.add(
+                Criteria.where("location.longitude").gte(longitude - radiusInDegrees).lte(longitude + radiusInDegrees)
+            );
+        }
 
         Criteria combinedCriteria = new Criteria();
         if (StringUtils.hasText(anyField)) {
@@ -87,8 +147,17 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
             combinedCriteria.andOperator(specificFieldCriteria.toArray(new Criteria[0]));
         }
 
+        // Apply search criteria if any
         if (!combinedCriteria.getCriteriaObject().isEmpty()) {
-            query.addCriteria(combinedCriteria);
+            if (statusFilterCriteria != null) {
+                // Combine search criteria with status filter
+                query.addCriteria(new Criteria().andOperator(combinedCriteria, statusFilterCriteria));
+            } else {
+                query.addCriteria(combinedCriteria);
+            }
+        } else if (statusFilterCriteria != null) {
+            // Only apply status filter if no search criteria
+            query.addCriteria(statusFilterCriteria);
         }
 
         List<Artifact> artifacts = mongoTemplate.find(query, Artifact.class);
@@ -102,9 +171,31 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
     @Override
     public Page<Artifact> globalSearch(String search, Pageable pageable) {
         Query query = new Query().with(pageable);
+        
+        // Get curator artifacts that are pending or rejected and should be excluded
+        List<UserArtifact> pendingArtifacts = userArtifactRepository.findByStatus(ApplicationStatus.pending);
+        List<UserArtifact> rejectedArtifacts = userArtifactRepository.findByStatus(ApplicationStatus.rejected);
+        
+        List<String> pendingOrRejectedArtifactIds = new ArrayList<>();
+        pendingArtifacts.forEach(ua -> pendingOrRejectedArtifactIds.add(ua.getArtifactId()));
+        rejectedArtifacts.forEach(ua -> pendingOrRejectedArtifactIds.add(ua.getArtifactId()));
+        
+        System.out.println("🚫 Excluding " + pendingOrRejectedArtifactIds.size() + " pending/rejected curator artifacts from global search");
+        if (!pendingOrRejectedArtifactIds.isEmpty()) {
+            System.out.println("Excluded artifact IDs from global search: " + pendingOrRejectedArtifactIds);
+            System.out.println("🔴 CRITICAL: Using _id field (not id) to exclude artifacts from MongoDB in global search");
+        } else {
+            System.out.println("✅ No pending/rejected artifacts found - all artifacts will be shown in global search");
+        }
+        
+        // Create criteria to exclude pending/rejected curator artifacts
+        Criteria statusFilterCriteria = null;
+        if (!pendingOrRejectedArtifactIds.isEmpty()) {
+            statusFilterCriteria = Criteria.where("_id").nin(pendingOrRejectedArtifactIds);
+        }
 
         if (StringUtils.hasText(search)) {
-            Criteria orCriteria = new Criteria().orOperator(
+            Criteria searchCriteria = new Criteria().orOperator(
                 Criteria.where("title").regex(search, "i"),
                 Criteria.where("description").regex(search, "i"),
                 Criteria.where("culture").regex(search, "i"),
@@ -113,9 +204,19 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
                 Criteria.where("medium").regex(search, "i"),
                 Criteria.where("artist_name").regex(search, "i"),
                 Criteria.where("tags").regex(search, "i")
-
             );
-            query.addCriteria(orCriteria);
+            
+            // Combine status filter with search criteria if needed
+            if (statusFilterCriteria != null) {
+                query.addCriteria(new Criteria().andOperator(statusFilterCriteria, searchCriteria));
+            } else {
+                query.addCriteria(searchCriteria);
+            }
+        } else {
+            // Only status filter if no search query and filter exists
+            if (statusFilterCriteria != null) {
+                query.addCriteria(statusFilterCriteria);
+            }
         }
 
         List<Artifact> results = mongoTemplate.find(query, Artifact.class);

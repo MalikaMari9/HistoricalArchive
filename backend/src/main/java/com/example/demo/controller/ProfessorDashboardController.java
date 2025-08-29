@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -66,18 +67,70 @@ public class ProfessorDashboardController {
         return ResponseEntity.ok(artworks);
     }
     
-    @GetMapping("/recent-decisions") 
-    public ResponseEntity<List<ArtworkDecisionRequest>> getRecentDecisions() {
-        List<ArtworkDecisionRequest> decisions = Arrays.asList(
-            new ArtworkDecisionRequest("Renaissance Portrait", "approved", "Alice Brown", 
-                                     LocalDateTime.now().minusDays(1)),
-            new ArtworkDecisionRequest("Gothic Sculpture", "rejected", "Bob Wilson", 
-                                     LocalDateTime.now().minusDays(2)),
-            new ArtworkDecisionRequest("Baroque Painting", "approved", "Carol Davis", 
-                                     LocalDateTime.now().minusDays(3))
+    @GetMapping("/recent-decisions")
+    public ResponseEntity<Map<String, Object>> getRecentDecisions(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "5") int size
+    ) {
+        List<UserArtifact> reviewedArtifacts = userArtifactRepository.findTopNByStatuses(
+            List.of(ApplicationStatus.accepted, ApplicationStatus.rejected),
+            PageRequest.of(0, Integer.MAX_VALUE)  // fetch all first, we'll paginate manually
         );
-        return ResponseEntity.ok(decisions);
+
+        List<ReviewDecisionDTO> artifactDecisions = reviewedArtifacts.stream()
+            .map(ua -> {
+                Optional<Artifact> artifactOpt = artifactRepository.findById(ua.getArtifactId());
+                Optional<User> curatorOpt = userRepository.findById(ua.getUserId());
+                if (artifactOpt.isEmpty() || curatorOpt.isEmpty()) return null;
+
+                return new ReviewDecisionDTO(
+                    "artifact",
+                    artifactOpt.get().getTitle(),
+                    ua.getStatus().name().toLowerCase(),
+                    curatorOpt.get().getUsername(),
+                    ua.getSavedAt().atZone(ZoneId.systemDefault()).toLocalDateTime()
+                );
+            })
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+
+        List<CuratorApplication> reviewedApps = curatorApplicationRepo.findTopNByStatuses(
+            List.of(ApplicationStatus.accepted, ApplicationStatus.rejected),
+            PageRequest.of(0, Integer.MAX_VALUE)
+        );
+
+        List<ReviewDecisionDTO> curatorDecisions = reviewedApps.stream()
+            .map(app -> {
+                if (app.getProfessor() == null) return null;
+                return new ReviewDecisionDTO(
+                    "curator",
+                    app.getFname(),
+                    app.getApplicationStatus().name().toLowerCase(),
+                    app.getUser().getUsername(),
+                    app.getSubmittedAt().atZone(ZoneId.systemDefault()).toLocalDateTime()
+                );
+            })
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+
+        List<ReviewDecisionDTO> all = new ArrayList<>();
+        all.addAll(artifactDecisions);
+        all.addAll(curatorDecisions);
+        all.sort((a, b) -> b.getDate().compareTo(a.getDate())); // Descending
+
+        int total = all.size();
+        int start = page * size;
+        int end = Math.min(start + size, total);
+        List<ReviewDecisionDTO> paginated = (start < end) ? all.subList(start, end) : List.of();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("items", paginated);
+        response.put("total", total);
+
+        return ResponseEntity.ok(response);
     }
+
+
     
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Integer>> getProfessorStats() {
@@ -329,6 +382,7 @@ public class ProfessorDashboardController {
         curatorApplicationRepo.save(application);
 
         // Promote user to 'curator'
+        application.setProfessor(professor);
         User applicant = application.getUser();
         applicant.setRole(UserRole.curator);
         userRepository.save(applicant);
@@ -377,6 +431,7 @@ public class ProfessorDashboardController {
         }
 
         // Reject application
+        application.setProfessor(professor);
         application.setApplicationStatus(ApplicationStatus.rejected);
         application.setRejectionReason(reason);
         curatorApplicationRepo.save(application);
@@ -423,6 +478,7 @@ public class ProfessorDashboardController {
 
         ua.setStatus(ApplicationStatus.accepted);
         ua.setReason(comment);
+        ua.setProfessorId(professor.getUserId()); 
         userArtifactRepository.save(ua);
 
         // Fetch uploader
@@ -472,6 +528,7 @@ public class ProfessorDashboardController {
 
         ua.setStatus(ApplicationStatus.rejected);
         ua.setReason(reason);
+        ua.setProfessorId(professor.getUserId()); 
         userArtifactRepository.save(ua);
 
         // Fetch uploader

@@ -20,6 +20,12 @@ public interface CustomArtifactRepository {
             String tags,
             LocalDate fromDate,
             LocalDate toDate,
+            String locationQuery,
+            Double latitude,
+            Double longitude,
+            Double radius,
+            String city,
+            String country,
             Pageable pageable
     );
     

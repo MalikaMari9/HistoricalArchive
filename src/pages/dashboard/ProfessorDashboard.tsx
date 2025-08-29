@@ -12,13 +12,13 @@ import {
   professorListPendingCurators,
   professorListPendingArtifacts,
   ProfessorPendingArtwork,
-  ProfessorRecentDecision,
   ProfessorStats,
   ProfessorPendingCurator,
   ProfessorPendingArtifact,
 } from "@/services/api";
 import axios, { AxiosError } from "axios";
 
+/* ----------------------------- types ----------------------------- */
 type PendingArtworkVM = {
   id: number;
   title: string;
@@ -29,10 +29,12 @@ type PendingArtworkVM = {
 };
 
 type RecentDecisionVM = {
-  artwork: string;
-  decision: "approved" | "rejected";
-  curator: string;
-  date: string; // "x minutes ago"
+  type: "artifact" | "curator";
+  title: string;       // artifact title or curator full name
+  decision: "accepted" | "rejected";
+  curator: string;     // curator's username
+  dateIso: string;     // raw ISO from server
+  relative: string;    // "x minutes ago"
 };
 
 type PendingCuratorVM = ProfessorPendingCurator & {
@@ -48,38 +50,42 @@ type PendingArtifactVM = {
   uploaded_at: string; // formatted
 };
 
+/* --------------------------- component --------------------------- */
 export default function ProfessorDashboard() {
   const navigate = useNavigate();
-const { user, ready } = useAuthGuard();
+  const { user, ready } = useAuthGuard();
+
   const [pendingArtworks, setPendingArtworks] = useState<PendingArtworkVM[]>([]);
   const [recentDecisions, setRecentDecisions] = useState<RecentDecisionVM[]>([]);
-  const [stats, setStats] = useState<ProfessorStats>({ pending: 0, approved: 0, rejected: 0, total: 0 });
+  const [stats, setStats] = useState<ProfessorStats>({ pending: 0, accepted: 0, rejected: 0, total: 0 });
   const [pendingCurators, setPendingCurators] = useState<PendingCuratorVM[]>([]);
   const [pendingArtifacts, setPendingArtifacts] = useState<PendingArtifactVM[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // pagination state for Recent Decisions
+  const [recentPage, setRecentPage] = useState(0);
+  const recentPageSize = 5;
+  const [recentTotal, setRecentTotal] = useState(0);
 
   const dateFmt = useMemo(
     () => new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }),
     []
   );
 
-useEffect(() => {
-  if (!ready) return;
-
-  if (!user) {
-    // session expired or not logged in at all
-    navigate("/signin", { replace: true });
-  } else if (user.role !== "professor") {
-    // logged in, but not a professor
-    navigate("/403", { replace: true });
-  }
-}, [ready, user, navigate]);
-
-
+  /* ------------------------- auth guard sync ------------------------- */
   useEffect(() => {
     if (!ready) return;
+    if (!user) {
+      navigate("/signin", { replace: true });
+    } else if (user.role !== "professor") {
+      navigate("/403", { replace: true });
+    }
+  }, [ready, user, navigate]);
 
+  /* ------------ load static dashboard boxes (not paginated) ---------- */
+  useEffect(() => {
+    if (!ready) return;
     const controller = new AbortController();
 
     (async () => {
@@ -87,16 +93,15 @@ useEffect(() => {
         setLoading(true);
         setError(null);
 
-        const [artworks, decisions, dashStats, curators, artifacts] = await Promise.all([
+        const [artworksRes, dashStats, curatorsRes, artifactsRes] = await Promise.all([
           professorListPendingArtworks(),
-          professorListRecentDecisions(),
           professorGetStats(),
           professorListPendingCurators(),
           professorListPendingArtifacts(),
         ]);
 
         setPendingCurators(
-          curators.map((c) => ({
+          curatorsRes.map((c) => ({
             ...c,
             dob: c.dob ? dateFmt.format(new Date(c.dob)) : "",
             submittedAt: c.submittedAt ? dateFmt.format(new Date(c.submittedAt)) : "",
@@ -104,7 +109,7 @@ useEffect(() => {
         );
 
         setPendingArtifacts(
-          artifacts.map<PendingArtifactVM>((a: ProfessorPendingArtifact) => ({
+          artifactsRes.map<PendingArtifactVM>((a: ProfessorPendingArtifact) => ({
             id: a.id,
             title: a.title,
             category: a.category,
@@ -114,29 +119,18 @@ useEffect(() => {
         );
 
         setPendingArtworks(
-          artworks.map<PendingArtworkVM>((a: ProfessorPendingArtwork) => ({
+          artworksRes.map<PendingArtworkVM>((a: ProfessorPendingArtwork) => ({
             id: a.id,
             title: a.title,
             curator: a.curator,
             category: a.category,
             submittedDate: a.submittedDate ? dateFmt.format(new Date(a.submittedDate)) : "",
-            priority:
-              (a.priority?.toLowerCase() as PendingArtworkVM["priority"]) ?? "low",
-          }))
-        );
-
-        setRecentDecisions(
-          decisions.map<RecentDecisionVM>((d: ProfessorRecentDecision) => ({
-            artwork: d.artworkTitle,
-            decision: (d.decision?.toString().toLowerCase() as RecentDecisionVM["decision"]) || "approved",
-            curator: d.curator,
-            date: timeAgo(d.decisionDate),
+            priority: (a.priority?.toLowerCase() as PendingArtworkVM["priority"]) ?? "low",
           }))
         );
 
         setStats(dashStats);
       } catch (e) {
-        // If your interceptor auto-redirects on 401/403, ignore here.
         const ax = e as AxiosError;
         if (axios.isAxiosError(ax) && ax.response && (ax.response.status === 401 || ax.response.status === 403)) {
           navigate("/signin", { replace: true });
@@ -151,6 +145,45 @@ useEffect(() => {
     return () => controller.abort();
   }, [ready, dateFmt, navigate]);
 
+  /* ------------------ load paginated recent decisions ----------------- */
+  useEffect(() => {
+    if (!ready) return;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        // keep page changes snappy without blocking other boxes
+        setError(null);
+
+        const decisionsRes = await professorListRecentDecisions(recentPage, recentPageSize);
+        const { items, total } = decisionsRes as { items: any[]; total: number };
+
+        setRecentTotal(total);
+
+        setRecentDecisions(
+          items.map<RecentDecisionVM>((d: any) => ({
+            type: d.type,
+            title: d.title,
+            decision: (d.decision?.toLowerCase() as RecentDecisionVM["decision"]),
+            curator: d.curator,
+            dateIso: d.date,
+            relative: timeAgo(d.date),
+          }))
+        );
+      } catch (e) {
+        const ax = e as AxiosError;
+        if (axios.isAxiosError(ax) && ax.response && (ax.response.status === 401 || ax.response.status === 403)) {
+          navigate("/signin", { replace: true });
+          return;
+        }
+        setError(e instanceof Error ? e.message : "Failed to load recent decisions");
+      }
+    })();
+
+    return () => controller.abort();
+  }, [ready, recentPage, navigate]);
+
+  /* ------------------------------ UI states ------------------------------ */
   if (!ready || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -177,6 +210,9 @@ useEffect(() => {
     );
   }
 
+  /* -------------------------------- render ------------------------------- */
+  const totalPages = Math.max(1, Math.ceil(recentTotal / recentPageSize));
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-surface/50 to-background p-6">
       <div className="max-w-7xl mx-auto">
@@ -202,11 +238,11 @@ useEffect(() => {
 
           <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Approved</CardTitle>
+              <CardTitle className="text-sm font-medium">Accepted</CardTitle>
               <CheckCircle className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.approved}</div>
+              <div className="text-2xl font-bold text-green-600">{stats.accepted}</div>
             </CardContent>
           </Card>
 
@@ -249,7 +285,6 @@ useEffect(() => {
                     <th className="py-2 px-4">Email</th>
                     <th className="py-2 px-4">DOB</th>
                     <th className="py-2 px-4">Submitted</th>
-                    <th className="py-2 px-4">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -261,14 +296,6 @@ useEffect(() => {
                       <td className="py-2 px-4">{c.email}</td>
                       <td className="py-2 px-4">{c.dob}</td>
                       <td className="py-2 px-4">{c.submittedAt}</td>
-                      <td className="py-2 px-4">
-                        <Link
-                          to={`/professor/curator-applications/${c.applicationId}`}
-                          className="text-primary underline underline-offset-2 hover:text-primary/80"
-                        >
-                          Review
-                        </Link>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -284,6 +311,7 @@ useEffect(() => {
 
         {/* Pending Artifacts + Recent Decisions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Pending Artifacts */}
           <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -301,7 +329,6 @@ useEffect(() => {
                       <th className="py-2 px-4">Category</th>
                       <th className="py-2 px-4">Uploaded by</th>
                       <th className="py-2 px-4">Submitted</th>
-                      <th className="py-2 px-4">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -311,14 +338,6 @@ useEffect(() => {
                         <td className="py-2 px-4">{a.category}</td>
                         <td className="py-2 px-4">{a.uploaded_by}</td>
                         <td className="py-2 px-4">{a.uploaded_at}</td>
-                        <td className="py-2 px-4">
-                          <Link
-                            to={`/professor/review/artifact/${a.id}`}
-                            className="text-primary underline underline-offset-2 hover:text-primary/80"
-                          >
-                            Review
-                          </Link>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -332,6 +351,7 @@ useEffect(() => {
             </CardContent>
           </Card>
 
+          {/* Recent Decisions */}
           <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -343,20 +363,55 @@ useEffect(() => {
             <CardContent>
               <div className="space-y-3">
                 {recentDecisions.map((d, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-surface/50 rounded-lg">
+                  <div key={`${d.type}-${d.title}-${d.dateIso}-${i}`} className="flex items-center justify-between p-3 bg-surface/50 rounded-lg">
                     <div>
-                      <p className="font-medium text-sm">{d.artwork}</p>
-                      <p className="text-xs text-muted-foreground">by {d.curator}</p>
+                      <p className="font-medium text-sm">
+                        {d.type === "artifact"
+                          ? `${capitalize(d.decision)} Artifact: “${d.title}”`
+                          : `${capitalize(d.decision)} Curator Application: ${d.title}`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {d.type === "artifact" ? `by ${d.curator}` : `(${d.curator})`}
+                      </p>
                     </div>
                     <div className="text-right">
-                      <Badge variant={d.decision === "approved" ? "default" : "destructive"}>
-                        {d.decision}
-                      </Badge>
-                      <p className="text-xs text-muted-foreground mt-1">{d.date}</p>
+                      <Badge className={getDecisionColor(d)}>{capitalize(d.decision)}</Badge>
+                      <p className="text-xs text-muted-foreground mt-1">{d.relative}</p>
                     </div>
                   </div>
                 ))}
               </div>
+
+              {recentTotal > recentPageSize && (
+                <div className="mt-4 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    Page {recentPage + 1} of {totalPages} • Showing{" "}
+                    {recentTotal === 0
+                      ? "0"
+                      : `${recentPage * recentPageSize + 1}–${Math.min(
+                          (recentPage + 1) * recentPageSize,
+                          recentTotal
+                        )}`}{" "}
+                    of {recentTotal}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      disabled={recentPage === 0}
+                      onClick={() => setRecentPage((p) => Math.max(p - 1, 0))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={(recentPage + 1) * recentPageSize >= recentTotal}
+                      onClick={() => setRecentPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -375,4 +430,17 @@ function timeAgo(dateString?: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
   return `${Math.floor(diff / 86400)} days ago`;
+}
+
+function capitalize(str: string): string {
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : "";
+}
+
+function getDecisionColor(d: RecentDecisionVM): string {
+  if (d.type === "artifact") {
+    return d.decision === "accepted" ? "bg-green-600 text-white" : "bg-red-600 text-white";
+  } else if (d.type === "curator") {
+    return d.decision === "accepted" ? "bg-blue-600 text-white" : "bg-yellow-500 text-white";
+  }
+  return "bg-gray-500 text-white";
 }

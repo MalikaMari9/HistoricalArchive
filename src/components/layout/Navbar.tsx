@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation , useNavigate} from 'react-router-dom';
 import { Menu, User, Heart, Search, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -16,6 +16,8 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
   const { user, isAuthenticated } = useAuth();
   const [imgOk, setImgOk] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+const navigate = useNavigate();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -55,15 +57,30 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
         {/* Center search bar (all users) */}
         <div className="flex-1 px-2 md:px-6">
           <div className="relative w-full max-w-xs md:max-w-md mx-auto">
-            <input
-              type="text"
-              placeholder="Search artworks, artists..."
-              className="pl-10 pr-10 py-1.5 md:py-2 border border-border rounded-lg bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
-            />
+<input
+  type="text"
+  placeholder="Search artworks, artists..."
+  className="pl-10 pr-10 py-1.5 md:py-2 border border-border rounded-lg bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-full"
+  value={searchInput}
+  onChange={(e) => setSearchInput(e.target.value)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter" && searchInput.trim()) {
+      navigate(`/gallery?search=${encodeURIComponent(searchInput.trim())}`);
+    }
+  }}
+/>
+
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Link to="/gallery">
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground hover:text-primary cursor-pointer" />
-            </Link>
+            <button
+  onClick={() => {
+    if (searchInput.trim()) {
+      navigate(`/gallery?search=${encodeURIComponent(searchInput.trim())}`);
+    }
+  }}
+>
+  <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground hover:text-primary cursor-pointer" />
+</button>
+
           </div>
         </div>
 

@@ -503,13 +503,18 @@ export default function UploadArtifact() {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={foundDate}
-                            onSelect={setFoundDate}
-                            initialFocus
-                            disabled={isSubmitting}
-                          />
+<Calendar
+  mode="single"
+  selected={foundDate}
+  onSelect={setFoundDate}
+  initialFocus
+  fromYear={1600} // 👈 Add this line
+  toYear={new Date().getFullYear()} // 👈 And this one
+  captionLayout="dropdown" // 👈 Enables year/month dropdown for easier navigation
+  disabled={isSubmitting}
+/>
+
+
                         </PopoverContent>
                       </Popover>
                     </div>

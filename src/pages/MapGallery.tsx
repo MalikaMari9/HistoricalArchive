@@ -1,18 +1,27 @@
 //import MarkerClusterGroup from '@changey/react-leaflet-markercluster';
 import { AdvancedSearchDialog } from "@/components/gallery/AdvancedSearchDialog";
+import LocationSearch, {
+  LocationSearchData,
+} from "@/components/map/LocationSearch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { searchArts, searchDetailedArts, SearchFilters } from "@/services/api";
-import { ArrowLeft, Grid, Search } from "lucide-react";
+import { ArrowLeft, Grid, MapPin, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 // Leaflet imports with museum enhancements
+import MarkerClusterGroup from "@changey/react-leaflet-markercluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { MapContainer, ScaleControl, useMap } from "react-leaflet";
-import MarkerClusterGroup from '@changey/react-leaflet-markercluster';
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  ScaleControl,
+  useMap,
+} from "react-leaflet";
 
 // Custom museum components
 import MuseumMapLayers from "@/components/map/MuseumMapLayers";
@@ -82,11 +91,32 @@ const createClusterCustomIcon = (cluster: any) => {
   });
 };
 
-// Enhanced map component for museum bounds fitting
-function MuseumMapBounds({ artifacts }: { artifacts: Artifact[] }) {
+// Enhanced map component for museum bounds fitting and live location search
+function MuseumMapBounds({
+  artifacts,
+  searchLocation,
+}: {
+  artifacts: Artifact[];
+  searchLocation?: { lat: number; lng: number; name: string } | null;
+}) {
   const map = useMap();
 
+  // Handle search location navigation with enhanced auto-zoom
   useEffect(() => {
+    if (searchLocation) {
+      console.log("🗺️ Auto-zooming to search location:", searchLocation);
+      // Higher zoom for better location detail viewing
+      map.setView([searchLocation.lat, searchLocation.lng], 15, {
+        animate: true,
+        duration: 1.5, // Smooth animation
+      });
+    }
+  }, [searchLocation, map]);
+
+  // Handle artifact bounds fitting with enhanced auto-zoom (only when no search location)
+  useEffect(() => {
+    if (searchLocation) return; // Don't auto-fit bounds when user is searching location
+
     const validCoordinates = artifacts
       .filter(
         (artifact) =>
@@ -103,23 +133,46 @@ function MuseumMapBounds({ artifacts }: { artifacts: Artifact[] }) {
           ]
       );
 
+    console.log("🎯 Auto-zooming to", validCoordinates.length, "artifacts");
+
     if (validCoordinates.length > 0) {
       if (validCoordinates.length === 1) {
-        // Single marker - center on it with museum-appropriate zoom
-        map.setView(validCoordinates[0], 12);
+        // Single artifact - zoom in closer for better detail
+        map.setView(validCoordinates[0], 14, {
+          animate: true,
+          duration: 1.2,
+        });
+        console.log("🔍 Single artifact zoom to level 14");
+      } else if (validCoordinates.length <= 5) {
+        // Few artifacts - fit bounds with higher zoom
+        const bounds = L.latLngBounds(validCoordinates);
+        map.fitBounds(bounds, {
+          padding: [40, 40],
+          maxZoom: 13, // Higher zoom for small clusters
+          animate: true,
+          duration: 1.2,
+        });
+        console.log("🔍 Small cluster zoom (max level 13)");
       } else {
-        // Multiple markers - fit bounds with padding for better visualization
+        // Many artifacts - fit bounds with moderate zoom
         const bounds = L.latLngBounds(validCoordinates);
         map.fitBounds(bounds, {
           padding: [30, 30],
-          maxZoom: 15, // Prevent over-zooming on clusters
+          maxZoom: 11, // Moderate zoom for large clusters
+          animate: true,
+          duration: 1.5,
         });
+        console.log("🔍 Large cluster zoom (max level 11)");
       }
     } else {
-      // No valid coordinates - show world view centered on major museum cities
-      map.setView([40, 0], 3); // Slightly higher zoom for cultural context
+      // No valid coordinates - show world view
+      map.setView([40, 0], 4, {
+        animate: true,
+        duration: 2,
+      }); // Slightly higher default zoom
+      console.log("🌍 No artifacts - world view at level 4");
     }
-  }, [artifacts, map]);
+  }, [artifacts, map, searchLocation]);
 
   return null;
 }
@@ -137,6 +190,19 @@ export default function MapGallery() {
     Omit<SearchFilters, "page" | "size">
   >({});
   const [hasSearched, setHasSearched] = useState(false);
+  const [locationData, setLocationData] = useState<LocationSearchData>({
+    placename: "",
+    city: "",
+    country: "",
+    latitude: undefined,
+    longitude: undefined,
+  });
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
+  const [searchLocationMarker, setSearchLocationMarker] = useState<{
+    lat: number;
+    lng: number;
+    name: string;
+  } | null>(null);
 
   const fetchData = async (currentFilters = activeFilters) => {
     console.log("Fetching with filters:", currentFilters);
@@ -161,8 +227,24 @@ export default function MapGallery() {
   };
 
   const handleSearch = () => {
-    const newFilters = { anyField: searchQuery };
-    console.log("Search clicked with query:", searchQuery);
+    const newFilters: Omit<SearchFilters, "page" | "size"> = {
+      anyField: searchQuery,
+      ...(locationData.latitude && locationData.longitude
+        ? {
+            latitude: locationData.latitude,
+            longitude: locationData.longitude,
+            radius: 25, // Default 25km radius for location searches
+            city: locationData.city,
+            country: locationData.country,
+          }
+        : {}),
+    };
+    console.log(
+      "Search clicked with query:",
+      searchQuery,
+      "and location:",
+      locationData
+    );
     setActiveFilters(newFilters);
     setHasSearched(true);
     if (searchQuery) {
@@ -184,6 +266,16 @@ export default function MapGallery() {
       toDate: newFilters.toDate
         ? new Date(newFilters.toDate).toISOString().split("T")[0]
         : undefined,
+      // Include location filters if set
+      ...(locationData.latitude && locationData.longitude
+        ? {
+            latitude: locationData.latitude,
+            longitude: locationData.longitude,
+            radius: 25, // Default 25km radius for location searches
+            city: locationData.city,
+            country: locationData.country,
+          }
+        : {}),
     };
 
     console.log("🔍 Advanced search filters:", formattedFilters);
@@ -212,6 +304,14 @@ export default function MapGallery() {
     setActiveFilters({});
     setSearchParams({});
     setHasSearched(false);
+    setLocationData({
+      placename: "",
+      city: "",
+      country: "",
+      latitude: undefined,
+      longitude: undefined,
+    });
+    setSearchLocationMarker(null); // Clear search marker
     fetchData({});
   };
 
@@ -282,6 +382,15 @@ export default function MapGallery() {
       });
     }
 
+    // Location filters
+    if (locationData.placename) {
+      badges.push({
+        key: "location",
+        value: locationData.placename,
+        label: `📍 Near: ${locationData.placename} (25km)`,
+      });
+    }
+
     return badges;
   };
 
@@ -289,6 +398,16 @@ export default function MapGallery() {
     if (filterKey === "search") {
       setSearchQuery("");
       setSearchParams({});
+    } else if (filterKey === "location") {
+      // Clear location filter
+      setLocationData({
+        placename: "",
+        city: "",
+        country: "",
+        latitude: undefined,
+        longitude: undefined,
+      });
+      setSearchLocationMarker(null); // Clear search marker when removing location filter
     } else {
       const newFilters = { ...activeFilters };
       delete newFilters[filterKey as keyof typeof activeFilters];
@@ -302,6 +421,13 @@ export default function MapGallery() {
     const updatedFilters =
       filterKey === "search"
         ? activeFilters
+        : filterKey === "location"
+        ? (() => {
+            // Remove location-related filters from activeFilters
+            const { latitude, longitude, radius, city, country, ...rest } =
+              activeFilters;
+            return rest;
+          })()
         : (() => {
             const newFilters = { ...activeFilters };
             delete newFilters[filterKey as keyof typeof activeFilters];
@@ -374,31 +500,72 @@ export default function MapGallery() {
       {/* Search Controls */}
       <div className="bg-card border-b">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Search artworks, artists..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="pl-10"
-              />
+          <div className="flex flex-col gap-4">
+            {/* Main search row */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                <Input
+                  placeholder="Search artworks, artists..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="pl-10"
+                />
+              </div>
+              <Button
+                onClick={handleSearch}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                <Search className="h-4 w-4 mr-2" />
+                Search
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setAdvancedSearchOpen(true)}
+                className="text-amber-700 border-amber-700 hover:bg-amber-50"
+              >
+                Detail Search
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowLocationSearch(!showLocationSearch)}
+                className="text-blue-700 border-blue-700 hover:bg-blue-50"
+              >
+                <MapPin className="h-4 w-4 mr-2" />
+                {showLocationSearch ? "Hide" : "Location"}
+              </Button>
             </div>
-            <Button
-              onClick={handleSearch}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
-            >
-              <Search className="h-4 w-4 mr-2" />
-              Search
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setAdvancedSearchOpen(true)}
-              className="text-amber-700 border-amber-700 hover:bg-amber-50"
-            >
-              Detail Search
-            </Button>
+
+            {/* Location search section */}
+            {showLocationSearch && (
+              <div className="bg-muted/50 rounded-lg p-4 border">
+                <LocationSearch
+                  value={locationData}
+                  onChange={setLocationData}
+                  onLocationSelect={(location) => {
+                    // Handle live location search - create marker and navigate map
+                    if (
+                      location.latitude &&
+                      location.longitude &&
+                      location.placename
+                    ) {
+                      console.log(
+                        "🎯 Live location selected - auto-zooming:",
+                        location
+                      );
+                      setSearchLocationMarker({
+                        lat: location.latitude,
+                        lng: location.longitude,
+                        name: location.placename,
+                      });
+                    } else {
+                      setSearchLocationMarker(null);
+                    }
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -486,7 +653,7 @@ export default function MapGallery() {
         ) : (
           <MapContainer
             center={[40, 0]}
-            zoom={3}
+            zoom={4}
             style={{ height: "100%", width: "100%", zIndex: 1 }}
             className="museum-map-container"
             scrollWheelZoom={true}
@@ -500,8 +667,57 @@ export default function MapGallery() {
             {/* Scale Control */}
             <ScaleControl position="bottomleft" />
 
-            {/* Museum Map Bounds */}
-            <MuseumMapBounds artifacts={artifactsWithCoordinates} />
+            {/* Museum Map Bounds with Live Location Search */}
+            <MuseumMapBounds
+              artifacts={artifactsWithCoordinates}
+              searchLocation={searchLocationMarker}
+            />
+
+            {/* Search Location Marker */}
+            {searchLocationMarker && (
+              <Marker
+                position={[searchLocationMarker.lat, searchLocationMarker.lng]}
+                icon={L.divIcon({
+                  html: `
+                    <div style="
+                      width: 30px;
+                      height: 30px;
+                      background: linear-gradient(135deg, #ef4444, #dc2626);
+                      border: 3px solid white;
+                      border-radius: 50%;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                      animation: bounce 1s ease-out;
+                    ">
+                      <div style="color: white; font-size: 16px; font-weight: bold;">📍</div>
+                    </div>
+                    <style>
+                      @keyframes bounce {
+                        0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+                        40% { transform: translateY(-10px); }
+                        60% { transform: translateY(-5px); }
+                      }
+                    </style>
+                  `,
+                  className: "",
+                  iconSize: [30, 30],
+                  iconAnchor: [15, 15],
+                })}
+              >
+                <Popup>
+                  <div className="text-center">
+                    <div className="font-semibold text-sm mb-1">
+                      🔍 Search Location
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {searchLocationMarker.name}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
 
             {/* Clustered Museum Markers */}
             <MarkerClusterGroup

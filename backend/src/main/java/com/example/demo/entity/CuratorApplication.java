@@ -60,6 +60,11 @@ public class CuratorApplication {
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
 
+    
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "professor_id") // this is new
+    private User professor; // the professor who reviewed this application
+
 
     // Getters and setters
 
@@ -159,4 +164,14 @@ public class CuratorApplication {
     public void setUser(User user) {
         this.user = user;
     }
+
+	public User getProfessor() {
+		return professor;
+	}
+
+	public void setProfessor(User professor) {
+		this.professor = professor;
+	}
+    
+    
 }

@@ -426,6 +426,13 @@ export interface SearchFilters {
   tags?: string;
   fromDate?: string;
   toDate?: string;
+  // Location filtering
+  locationQuery?: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number; // in kilometers
+  city?: string;
+  country?: string;
   page?: number;
   size?: number;
 }
@@ -435,12 +442,35 @@ export const searchArts = async (
   filters: SearchFilters
 ): Promise<ArtifactResponse> => {
   try {
+    const params = {
+      search: filters.anyField ?? "",
+      page: filters.page ?? 0,
+      size: filters.size ?? 6,
+      // Include all filter parameters to enable backend filtering
+      anyField: filters.anyField || "",
+      title: filters.title || "",
+      category: filters.category || "",
+      culture: filters.culture || "",
+      department: filters.department || "",
+      period: filters.period || "",
+      medium: filters.medium || "",
+      artistName: filters.artistName || "",
+      tags: filters.tags || "",
+      fromDate: filters.fromDate || undefined,
+      toDate: filters.toDate || undefined,
+      // Location parameters
+      locationQuery: filters.locationQuery || undefined,
+      latitude: filters.latitude || undefined,
+      longitude: filters.longitude || undefined,
+      radius: filters.radius || undefined,
+      city: filters.city || undefined,
+      country: filters.country || undefined,
+    };
+
+    console.log("🔎 searchArts() calling /artifacts with params:", params);
+
     const res = await api.get<ArtifactResponse>("/artifacts", {
-      params: {
-        search: filters.anyField ?? "",
-        page: filters.page ?? 0,
-        size: filters.size ?? 6,
-      },
+      params,
     });
     return res.data;
   } catch (err) {
@@ -466,6 +496,13 @@ export const searchDetailedArts = async (
       tags: filters.tags || "",
       fromDate: filters.fromDate || undefined,
       toDate: filters.toDate || undefined,
+      // Location parameters
+      locationQuery: filters.locationQuery || undefined,
+      latitude: filters.latitude || undefined,
+      longitude: filters.longitude || undefined,
+      radius: filters.radius || undefined,
+      city: filters.city || undefined,
+      country: filters.country || undefined,
       page: filters.page ?? 0,
       size: filters.size ?? 6,
     };
@@ -622,6 +659,8 @@ export interface ArtifactDetail {
   period?: string;
   medium?: string;
   dimension?: string;
+  tags?:string;
+  exact_found_date?:string;
   images?: Array<{
     baseimageurl?: string;
     iiifbaseuri?: string;
@@ -875,20 +914,19 @@ export const deleteArtifact = async (id: string): Promise<void> => {
 };
 
 /** Update an artwork (full or partial) */
-export const updateArtifact = async (
-  id: string,
-  payload: ArtifactUpdatePayload
-) => {
-  // If your backend expects PUT for full updates, keep PUT.
-  // If it supports partial updates, PATCH is often nicer. Use what your API expects.
-  const res = await api.put(`/artifacts/${encodeURIComponent(id)}`, payload);
-  return res.data;
-};
+export const updateArtifactMultipart = async (id: string, form: FormData) => {
+   const res = await api.put(`/artifacts/${id}`, form, {
+     headers: { "Content-Type": "multipart/form-data" },
+     withCredentials: true,
+   });
+   return res.data;
+ };
+
 
 
 /* ----------------------------- Curator Dashboard ----------------------------- */
 
-export type CuratorStatus = "approved" | "pending" | "rejected";
+export type CuratorStatus = "accepted" | "pending" | "rejected";
 
 export interface CuratorArtworkItem {
   id: number;
@@ -905,10 +943,16 @@ export interface CuratorStats {
 }
 
 /** My artworks for the dashboard list */
-export const curatorListArtworks = async (): Promise<CuratorArtworkItem[]> => {
-  const res = await api.get<CuratorArtworkItem[]>("/curator/artworks");
+export const curatorListArtworks = async (
+  page: number,
+  size: number
+): Promise<{ items: CuratorArtworkItem[]; total: number }> => {
+  const res = await api.get("/curator/artworks", {
+    params: { page, size },
+  });
   return res.data;
 };
+
 
 /** Aggregated stats for the dashboard header/cards */
 export const curatorGetStats = async (): Promise<CuratorStats> => {
@@ -926,11 +970,12 @@ export interface RecentCommentDTO {
   isCuratorArtwork: boolean;
 }
 
-export const getRecentCommentsForCurator = async (): Promise<RecentCommentDTO[]> => {
-  const res = await api.get<RecentCommentDTO[]>('/comments/curator/recent');
+export const getRecentCommentsForCurator = async (): Promise<
+  RecentCommentDTO[]
+> => {
+  const res = await api.get<RecentCommentDTO[]>("/comments/curator/recent");
   return res.data;
 };
-
 
 /* ---------------------------- Professor Dashboard ---------------------------- */
 
@@ -954,7 +999,7 @@ export interface ProfessorRecentDecision {
 
 export interface ProfessorStats {
   pending: number;
-  approved: number;
+  accepted: number;
   rejected: number;
   total: number;
 }
@@ -985,14 +1030,13 @@ export const professorListPendingArtworks = async (): Promise<
   return res.data;
 };
 
-export const professorListRecentDecisions = async (): Promise<
-  ProfessorRecentDecision[]
-> => {
-  const res = await api.get<ProfessorRecentDecision[]>(
-    "/professor/dashboard/recent-decisions"
-  );
-  return res.data;
-};
+export async function professorListRecentDecisions(page = 0, size = 5) {
+  const res = await axios.get(`/api/professor/dashboard/recent-decisions`, {
+    params: { page, size },
+  });
+  return res.data; // { items: [], total: number }
+}
+
 
 export const professorGetStats = async (): Promise<ProfessorStats> => {
   const res = await api.get<ProfessorStats>("/professor/dashboard/stats");
@@ -1041,9 +1085,9 @@ export const applyForCurator = async (form: FormData): Promise<void> => {
   });
 };
 
-
-
-export const getCuratorApplicationStatus = async (): Promise< "pending" | "accepted" | "rejected"> => {
+export const getCuratorApplicationStatus = async (): Promise<
+  "pending" | "accepted" | "rejected"
+> => {
   const res = await api.get("/curator/status", { withCredentials: true });
   return res.data;
 };
@@ -1235,7 +1279,6 @@ export const listNotifications = async (opts?: {
   return res.data;
 };
 
-
 /** Mark all notifications as read */
 export const markAllNotificationsRead = async (): Promise<void> => {
   await api.put("/notifications/mark-all-read", undefined, {
@@ -1249,5 +1292,3 @@ export const markNotificationRead = async (id: number): Promise<void> => {
     withCredentials: true,
   });
 };
-
-

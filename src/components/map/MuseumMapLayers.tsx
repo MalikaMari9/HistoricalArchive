@@ -25,13 +25,6 @@ export default function MuseumMapLayers() {
         />
       </LayersControl.BaseLayer>
 
-      <LayersControl.BaseLayer name="Historical Terrain">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}{r}.png"
-        />
-      </LayersControl.BaseLayer>
-
       <LayersControl.BaseLayer name="Satellite View">
         <TileLayer
           attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"

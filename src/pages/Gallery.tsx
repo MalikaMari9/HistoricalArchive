@@ -29,6 +29,7 @@ export default function Gallery() {
   const [activeFilters, setActiveFilters] = useState<
     Omit<SearchFilters, "page" | "size">
   >({});
+  const [hasSearched, setHasSearched] = useState(false);
   const itemsPerPage = 6;
 
   const fetchData = async (page = 0, currentFilters = activeFilters) => {
@@ -60,6 +61,7 @@ export default function Gallery() {
     console.log("Search clicked with query:", searchQuery);
     setActiveFilters(newFilters);
     setCurrentPage(0);
+    setHasSearched(true);
     if (searchQuery) {
       setSearchParams({ search: searchQuery });
     } else {
@@ -92,6 +94,7 @@ export default function Gallery() {
       setArtData(data);
       setActiveFilters(formattedFilters);
       setCurrentPage(0);
+      setHasSearched(true);
     } catch (err) {
       console.error("Advanced search failed:", err);
       setArtData({
@@ -169,6 +172,7 @@ export default function Gallery() {
     setActiveFilters({});
     setCurrentPage(0);
     setSearchParams({});
+    setHasSearched(false);
     fetchData(0, {});
   };
 
@@ -301,6 +305,7 @@ export default function Gallery() {
           setArtData(data);
           setActiveFilters(newFilters); // Set filters after successful search
           setCurrentPage(0);
+          setHasSearched(true);
         } catch (err) {
           console.error("Tag search failed:", err);
           setArtData({
@@ -324,6 +329,7 @@ export default function Gallery() {
       setSearchQuery(urlSearchQuery);
       const newFilters = { anyField: urlSearchQuery };
       setActiveFilters(newFilters);
+      setHasSearched(true);
       fetchData(0, newFilters);
       return;
     }
@@ -414,58 +420,60 @@ export default function Gallery() {
         </div>
 
         {/* Search Results Caption */}
-        {(searchQuery || Object.keys(activeFilters).length > 0) && !loading && (
-          <div className="mb-6 p-4 bg-gradient-to-r from-cream to-warm-white dark:from-slate-800 dark:to-slate-700 border border-brown-light/30 dark:border-slate-600 rounded-lg shadow-soft">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-2 h-2 bg-brown-medium rounded-full shadow-sm"></div>
-                  <div>
-                    <h3 className="font-semibold text-brown-dark dark:text-foreground">
-                      Search Results
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {artData.totalElements}{" "}
-                      {artData.totalElements === 1 ? "artwork" : "artworks"}{" "}
-                      found
-                    </p>
+        {hasSearched &&
+          (searchQuery || Object.keys(activeFilters).length > 0) &&
+          !loading && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-cream to-warm-white dark:from-slate-800 dark:to-slate-700 border border-brown-light/30 dark:border-slate-600 rounded-lg shadow-soft">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-2 h-2 bg-brown-medium rounded-full shadow-sm"></div>
+                    <div>
+                      <h3 className="font-semibold text-brown-dark dark:text-foreground">
+                        Search Results
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {artData.totalElements}{" "}
+                        {artData.totalElements === 1 ? "artwork" : "artworks"}{" "}
+                        found
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Active Filters */}
+                  <div className="flex flex-wrap gap-2">
+                    {getActiveFilterBadges().map((filter, index) => (
+                      <Badge
+                        key={index}
+                        variant="secondary"
+                        className="bg-brown-light/50 text-brown-dark border border-brown-medium/20 hover:bg-brown-light/70 transition-colors"
+                      >
+                        <span className="text-xs font-medium">
+                          {filter.label}
+                        </span>
+                        <button
+                          onClick={() => removeFilter(filter.key, filter.value)}
+                          className="ml-1.5 hover:text-brown-dark/80 transition-colors"
+                          title={`Remove ${filter.label} filter`}
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ))}
                   </div>
                 </div>
 
-                {/* Active Filters */}
-                <div className="flex flex-wrap gap-2">
-                  {getActiveFilterBadges().map((filter, index) => (
-                    <Badge
-                      key={index}
-                      variant="secondary"
-                      className="bg-brown-light/50 text-brown-dark border border-brown-medium/20 hover:bg-brown-light/70 transition-colors"
-                    >
-                      <span className="text-xs font-medium">
-                        {filter.label}
-                      </span>
-                      <button
-                        onClick={() => removeFilter(filter.key, filter.value)}
-                        className="ml-1.5 hover:text-brown-dark/80 transition-colors"
-                        title={`Remove ${filter.label} filter`}
-                      >
-                        ×
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="text-brown-medium hover:text-brown-dark hover:bg-brown-light/20 dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-accent shrink-0"
+                >
+                  Clear all
+                </Button>
               </div>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearAllFilters}
-                className="text-brown-medium hover:text-brown-dark hover:bg-brown-light/20 dark:text-muted-foreground dark:hover:text-foreground dark:hover:bg-accent shrink-0"
-              >
-                Clear all
-              </Button>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Gallery Grid */}
         {loading ? (

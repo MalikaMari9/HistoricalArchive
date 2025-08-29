@@ -34,6 +34,9 @@ export const ManageArtworks = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AppStatus>('all');
+const [page, setPage] = useState(0);
+const pageSize = 6; // or whatever you want per page
+const [totalPages, setTotalPages] = useState(1);
 
   const getBestImageUrl = (a: MyArtworkDTO): string => {
     const fromImageUrl = a.image_url?.trim();
@@ -52,32 +55,34 @@ export const ManageArtworks = () => {
         return "bg-yellow-100 text-yellow-800";
     }
   };
-
-  useEffect(() => {
-    const fetchArtworks = async () => {
-      try {
-        const res: PageResponse<MyArtworkDTO> = await listMyArtworks(0, 100);
-        const normalized = (res.content || []).map(raw => {
-          const image_url =
-            (raw.image_url && String(raw.image_url).trim()) ||
-            (raw.images?.[0]?.baseimageurl && String(raw.images[0].baseimageurl).trim()) ||
-            '';
-          return { ...raw, image_url };
-        });
-        setArtworks(normalized);
-      } catch (err: any) {
-        console.error('Failed to fetch artworks:', err);
-        if (err?.response?.status === 401) {
-          setError('You must be logged in as a curator to view your artworks.');
-        } else {
-          setError('Failed to fetch artworks. Please try again.');
-        }
-      } finally {
-        setLoading(false);
+useEffect(() => {
+  const fetchArtworks = async () => {
+    try {
+      setLoading(true);
+      const res: PageResponse<MyArtworkDTO> = await listMyArtworks(page, pageSize);
+      const normalized = (res.content || []).map(raw => {
+        const image_url =
+          (raw.image_url && String(raw.image_url).trim()) ||
+          (raw.images?.[0]?.baseimageurl && String(raw.images[0].baseimageurl).trim()) ||
+          '';
+        return { ...raw, image_url };
+      });
+      setArtworks(normalized);
+      setTotalPages(res.totalPages ?? 1); // 👈
+    } catch (err: any) {
+      console.error('Failed to fetch artworks:', err);
+      if (err?.response?.status === 401) {
+        setError('You must be logged in as a curator to view your artworks.');
+      } else {
+        setError('Failed to fetch artworks. Please try again.');
       }
-    };
-    fetchArtworks();
-  }, []);
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchArtworks();
+}, [page]); // 👈 Include `page` as dependency
+
 
   const filteredArtworks = artworks.filter((artwork) => {
     const matchesSearch = artwork.title.toLowerCase().includes(searchTerm.toLowerCase());
@@ -260,6 +265,36 @@ export const ManageArtworks = () => {
                 )}
               </TableBody>
             </Table>
+            {totalPages > 1 && (
+  <div className="flex justify-center items-center gap-4 mt-6">
+    <Button
+     type="button"
+      variant="outline"
+      size="sm"
+      
+        onClick={(e) => {
+    e.preventDefault(); // 💥 force block
+    setPage((p) => Math.max(p - 1, 0));
+  }}
+      disabled={page === 0}
+    >
+      Previous
+    </Button>
+    <span className="text-sm text-muted-foreground">
+      Page {page + 1} of {totalPages}
+    </span>
+    <Button
+     type="button"
+      variant="outline"
+      size="sm"
+      onClick={(e) =>{e.preventDefault(); setPage((p) => (p + 1 < totalPages ? p + 1 : p))}}
+      disabled={page + 1 >= totalPages}
+    >
+      Next
+    </Button>
+  </div>
+)}
+
           </div>
         </CardContent>
       </Card>

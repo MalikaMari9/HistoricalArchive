@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -7,12 +7,10 @@ import { Button } from "@/components/ui/button";
 import {
   Upload, MessageSquare, Image, PlusCircle, Clock, CheckCircle,
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import {
   curatorListArtworks,
   curatorGetStats,
   getRecentCommentsForCurator,
-  CuratorArtworkItem,
   CuratorStats,
   RecentCommentDTO,
 } from "@/services/api";
@@ -21,7 +19,7 @@ import axios, { AxiosError } from "axios";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 
 type ArtworkRow = {
-  id: number;
+  id: number | string;
   title: string;
   status: "accepted" | "pending" | "rejected";
   date: string;
@@ -42,6 +40,9 @@ export default function CuratorDashboard() {
   const [recentComments, setRecentComments] = useState<RecentCommentDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const pageSize = 5;
+  const [totalArtworks, setTotalArtworks] = useState(0);
 
   const dateFmt = useMemo(
     () =>
@@ -60,53 +61,66 @@ export default function CuratorDashboard() {
     }
   }, [user, authLoading, isAuthenticated, navigate]);
 
-  // Load curator data
+  // Fetch stats + comments once
   useEffect(() => {
     if (authLoading || !isAuthenticated || user?.role !== "curator") return;
 
-    async function load() {
+    (async () => {
       try {
-        setLoading(true);
-        setError(null);
-
-        const [artworksData, statsData, commentsData] = await Promise.all([
-          curatorListArtworks(),
+        const [statsData, commentsData] = await Promise.all([
           curatorGetStats(),
           getRecentCommentsForCurator(),
         ]);
-
-        const rows: ArtworkRow[] = artworksData.map((art: CuratorArtworkItem) => {
-          const normalized =
-            (art.status?.toString().toLowerCase() as ArtworkRow["status"]) || "pending";
-          const date = art.submissionDate ? dateFmt.format(new Date(art.submissionDate)) : "";
-          return {
-            id: art.id,
-            title: art.title,
-            status:
-              normalized === "accepted" || normalized === "pending" || normalized === "rejected"
-                ? normalized
-                : "pending",
-            date,
-          };
-        });
-
-        setMyArtworks(rows);
         setStats(statsData);
         setRecentComments(commentsData);
       } catch (e) {
         const ax = e as AxiosError;
-        if (axios.isAxiosError(ax) && ax.response && (ax.response.status === 401 || ax.response.status === 403)) {
-          return;
+        if (!(axios.isAxiosError(ax) && ax.response && (ax.response.status === 401 || ax.response.status === 403))) {
+          setError(e instanceof Error ? e.message : "Failed to load curator dashboard");
         }
-
-        setError(e instanceof Error ? e.message : "Failed to load curator dashboard");
-      } finally {
-        setLoading(false);
       }
-    }
+    })();
+  }, [authLoading, isAuthenticated, user]);
 
-    load();
-  }, [authLoading, user, isAuthenticated, dateFmt]);
+  // Fetch artworks whenever page changes
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || user?.role !== "curator") return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const artworksData = await curatorListArtworks(page, pageSize);
+
+        const rows: ArtworkRow[] = artworksData.items.map((art: any) => {
+          const normalized = (art.status?.toString().toLowerCase() as ArtworkRow["status"]) || "pending";
+          const date = art.submissionDate ? dateFmt.format(new Date(art.submissionDate)) : "";
+          return {
+            id: art.id,
+            title: art.title,
+            status: ["accepted", "pending", "rejected"].includes(normalized) ? normalized : "pending",
+            date,
+          };
+        });
+
+        if (!cancelled) {
+          setMyArtworks(rows);
+          setTotalArtworks(artworksData.total ?? 0);
+        }
+      } catch (e) {
+        const ax = e as AxiosError;
+        if (!(axios.isAxiosError(ax) && ax.response && (ax.response.status === 401 || ax.response.status === 403))) {
+          if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load curator dashboard");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [authLoading, isAuthenticated, user, page, pageSize, dateFmt]);
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -156,7 +170,7 @@ export default function CuratorDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <Card className="hover:shadow-lg transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm">
             <CardHeader className="text-center">
               <PlusCircle className="h-12 w-12 text-green-600 mx-auto mb-2" />
@@ -187,22 +201,6 @@ export default function CuratorDashboard() {
               </Link>
             </CardContent>
           </Card>
-
-          <Card className="hover:shadow-lg transition-all duration-300 border-border/50 bg-card/80 backdrop-blur-sm">
-            <CardHeader className="text-center">
-              <MessageSquare className="h-12 w-12 text-purple-600 mx-auto mb-2" />
-              <CardTitle>Discussions</CardTitle>
-              <CardDescription>Engage with other curators</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link to="/curator/discussions">
-                <Button variant="outline" className="w-full">
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  Join Discussions
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Stats Overview */}
@@ -222,7 +220,7 @@ export default function CuratorDashboard() {
           <Card className="bg-green-50 border-green-200">
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-green-700">{stats.approvedArtworks}</div>
-              <p className="text-sm text-green-600">Approved</p>
+              <p className="text-sm text-green-600">Accepted</p>
             </CardContent>
           </Card>
           <Card className="bg-red-50 border-red-200">
@@ -252,7 +250,7 @@ export default function CuratorDashboard() {
                   </Link>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
+                <div className="space-y-3 max-h-96 ">
                   {myArtworks.map((artwork) => (
                     <div
                       key={artwork.id}
@@ -263,15 +261,9 @@ export default function CuratorDashboard() {
                         <p className="text-sm text-muted-foreground">{artwork.date}</p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {artwork.status === "accepted" && (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                        )}
-                        {artwork.status === "pending" && (
-                          <Clock className="h-4 w-4 text-yellow-600" />
-                        )}
-                        {artwork.status === "rejected" && (
-                          <div className="h-4 w-4 rounded-full bg-red-600" />
-                        )}
+                        {artwork.status === "accepted" && <CheckCircle className="h-4 w-4 text-green-600" />}
+                        {artwork.status === "pending" && <Clock className="h-4 w-4 text-yellow-600" />}
+                        {artwork.status === "rejected" && <div className="h-4 w-4 rounded-full bg-red-600" />}
                         <span
                           className={`text-xs px-2 py-1 rounded-full ${
                             artwork.status === "accepted"
@@ -286,6 +278,33 @@ export default function CuratorDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {totalArtworks > pageSize && (
+                <div className="flex justify-center items-center gap-4 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(p - 1, 0))}
+                    disabled={page === 0 || loading}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {page + 1} of {Math.ceil(totalArtworks / pageSize)}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setPage((p) =>
+                        p + 1 < Math.ceil(totalArtworks / pageSize) ? p + 1 : p
+                      )
+                    }
+                    disabled={page + 1 >= Math.ceil(totalArtworks / pageSize) || loading}
+                  >
+                    Next
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -314,7 +333,7 @@ export default function CuratorDashboard() {
                           <div className="flex items-center gap-2 mb-2">
                             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                               <span className="text-sm font-medium text-blue-700">
-                                {comment.username?.charAt(0)?.toUpperCase() || 'U'}
+                                {comment.username?.charAt(0)?.toUpperCase() || "U"}
                               </span>
                             </div>
                             <p className="font-medium text-sm">{comment.username}</p>
@@ -323,9 +342,7 @@ export default function CuratorDashboard() {
                           <div className="flex items-center mt-2 text-xs text-muted-foreground">
                             <span className="truncate">on {comment.artifactTitle}</span>
                             <span className="mx-2">•</span>
-                            <span>
-                              {new Date(comment.createdAt).toLocaleDateString()}
-                            </span>
+                            <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
                           </div>
                         </div>
                       </div>
@@ -343,7 +360,9 @@ export default function CuratorDashboard() {
             <div className="flex flex-col md:flex-row items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold mb-2">Ready to showcase more art?</h3>
-                <p className="opacity-90">Upload your next masterpiece and share it with the community.</p>
+                <p className="opacity-90">
+                  Upload your next masterpiece and share it with the community.
+                </p>
               </div>
               <Link to="/curator/upload" className="mt-4 md:mt-0">
                 <Button variant="secondary" className="whitespace-nowrap">

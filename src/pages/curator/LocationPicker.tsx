@@ -49,6 +49,8 @@ export default function LocationPicker({ value, onChange, disabled }: LocationPi
   ]);
 const [recenterFlag, setRecenterFlag] = useState(false);
 
+const justSelectedRef = useRef(false);
+
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -172,12 +174,13 @@ const country = loc.address.country || "";
     };
 
     setSearchQuery(loc.display_name);
+    justSelectedRef.current = true;
     setSuggestions([]);
     setPosition([lat, lon]);
     onChange(newLoc);
 
     if (mapRef.current) {
-      mapRef.current.setView([lat, lon], 12);
+      mapRef.current.setView([lat, lon], 17); //FIx zoom here
     }
   };
 
@@ -202,11 +205,17 @@ useEffect(() => {
   }
 }, [mapRef.current]);
 
+useEffect(() => {
+  if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
-  useEffect(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => fetchSuggestions(searchQuery), 400);
-  }, [searchQuery]);
+  timeoutRef.current = setTimeout(() => {
+    if (!justSelectedRef.current) {
+      fetchSuggestions(searchQuery);
+    } else {
+      justSelectedRef.current = false; // ✅ reset after skip
+    }
+  }, 400);
+}, [searchQuery]);
 
   return (
     <div className="space-y-2 relative">
@@ -298,6 +307,15 @@ eventHandlers={{
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div>
+  <Label>Place Name</Label>
+  <Input
+    value={value.placename || ""}
+    onChange={(e) => onChange({ ...value, placename: e.target.value })}
+    placeholder="e.g., Tokyo National Museum"
+  />
+</div>
+
         <div>
           <Label>City</Label>
          <Input

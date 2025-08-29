@@ -1,8 +1,10 @@
 package com.example.demo.repository;
 
+import com.example.demo.dto.PendingArtworkRequest;
 import com.example.demo.entity.ApplicationStatus;
 import com.example.demo.entity.UserArtifact;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,5 +45,17 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 	 List<UserArtifact> findByUserIdAndArtifactIdIn(Integer userId, List<String> artifactIds);
 
 	 List<UserArtifact> findByArtifactIdIn(List<String> artifactIds);
+
+	 @Query("SELECT ua FROM UserArtifact ua WHERE ua.status IN :statuses ORDER BY ua.savedAt DESC")
+	 List<UserArtifact> findTop5ByStatuses(@Param("statuses") List<ApplicationStatus> statuses, Pageable pageable);
+
+	 List<UserArtifact> findByStatusInOrderBySavedAtDesc(List<ApplicationStatus> of, Pageable pageable);
+
+	    @Query("SELECT ua FROM UserArtifact ua WHERE ua.status IN :statuses ORDER BY ua.savedAt DESC")
+	    List<UserArtifact> findTopNByStatuses(@Param("statuses") List<ApplicationStatus> statuses, Pageable pageable);
+
+
 }
+
+
 

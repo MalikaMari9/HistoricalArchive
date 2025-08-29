@@ -73,10 +73,17 @@ public class ArtifactController {
             @RequestParam(required = false) String tags,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) String locationQuery,
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude,
+            @RequestParam(required = false) Double radius,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String country,
             Pageable pageable) {
 
         Page<Artifact> results = artifactService.searchArtifacts(
-            anyField, title, category, culture, department, period, medium, artistName, tags, fromDate, toDate, pageable
+            anyField, title, category, culture, department, period, medium, artistName, tags, fromDate, toDate,
+            locationQuery, latitude, longitude, radius, city, country, pageable
         );
         System.out.println("🔎 Search Results:");
         System.out.println("  Total Elements: " + results.getTotalElements());
@@ -92,11 +99,37 @@ public class ArtifactController {
     public Page<ArtifactDTO> globalSearchArtifacts(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "6") int size
+            @RequestParam(defaultValue = "6") int size,
+            // Add filtering parameters to enable backend filtering
+            @RequestParam(required = false) String anyField,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String culture,
+            @RequestParam(required = false) String department,
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) String medium,
+            @RequestParam(required = false) String artistName,
+            @RequestParam(required = false) String tags,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) String locationQuery,
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude,
+            @RequestParam(required = false) Double radius,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String country
     ) {
-    	System.out.println("Global search query: " + search);
+    	System.out.println("🔎 Global search with query: " + search);
+    	System.out.println("🔎 Global search with anyField: " + anyField);
+    	System.out.println("🔎 Global search with location: " + locationQuery + ", lat: " + latitude + ", lng: " + longitude);
         Pageable pageable = PageRequest.of(page, size);
-        Page<Artifact> artifactPage = artifactService.globalSearch(search, pageable);
+        
+        // Use the detailed search method instead of simple global search to enable filtering
+        Page<Artifact> artifactPage = artifactService.searchArtifacts(
+            anyField != null ? anyField : search, // Use anyField if provided, otherwise use search
+            title, category, culture, department, period, medium, artistName, tags, 
+            fromDate, toDate, locationQuery, latitude, longitude, radius, city, country, pageable
+        );
         
         System.out.println("Total results: " + artifactPage.getTotalElements());
         for (Artifact artifact : artifactPage.getContent()) {
