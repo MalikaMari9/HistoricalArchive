@@ -3,9 +3,11 @@ package com.example.demo.controller;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
-
+import org.springframework.data.domain.PageImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.demo.dto.ArtifactDTO;
+import com.example.demo.entity.ApplicationStatus;
 import com.example.demo.entity.Artifact;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserArtifact;
@@ -233,30 +236,73 @@ public class ArtifactController {
 
 
     @GetMapping("/my-artworks")
-    @CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
     public ResponseEntity<Page<ArtifactDTO>> getMyArtworks(
             HttpSession session,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "6") int size) {
+            @RequestParam(defaultValue = "6") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status // "accepted", "rejected", "pending"
+    ) {
+        User user = (User) session.getAttribute("loggedInUser");
+        if (user == null) return ResponseEntity.status(401).build();
 
-        User loggedInUser = (User) session.getAttribute("loggedInUser");
-        if (loggedInUser == null) return ResponseEntity.status(401).body(null);
+        List<UserArtifact> userArtifacts = userArtifactRepository.findByUserId(user.getUserId());
 
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Artifact> artifactPage = artifactRepository.findByUploaded_by(loggedInUser.getUsername(), pageable);
+        // Step 1: Filter based on status
+        if (status != null && !status.equalsIgnoreCase("all")) {
+            userArtifacts = userArtifacts.stream()
+                .filter(ua -> ua.getStatus().name().equalsIgnoreCase(status))
+                .toList();
+        }
 
-        Page<ArtifactDTO> dtoPage = artifactPage.map(a -> {
-            ArtifactDTO dto = convertToDTO(a); // already sets ratings/images/etc.
-            UserArtifact ua = userArtifactRepository.findByUserIdAndArtifactId(loggedInUser.getUserId(), a.getId());
-            if (ua != null && ua.getStatus() != null) {
-                dto.setStatus(ua.getStatus().name());
-            } else {
-                dto.setStatus("pending"); // sensible default
-            }
-            return dto;
-        });
+        // Step 2: Fetch relevant artifacts
+        List<String> artifactIds = userArtifacts.stream().map(UserArtifact::getArtifactId).toList();
+        List<Artifact> artifacts = artifactRepository.findAllById(artifactIds);
+        Map<String, UserArtifact> uaMap = userArtifacts.stream()
+                .collect(Collectors.toMap(UserArtifact::getArtifactId, ua -> ua));
 
-        return ResponseEntity.ok(dtoPage);
+        // Step 3: Optional search filter
+        List<ArtifactDTO> allDto = artifacts.stream()
+            .filter(artifact -> {
+                if (search == null || search.trim().isEmpty()) return true;
+                return artifact.getTitle().toLowerCase().contains(search.toLowerCase());
+            })
+            .map(artifact -> {
+                ArtifactDTO dto = convertToDTO(artifact);
+                dto.setStatus(uaMap.get(artifact.getId()).getStatus().name());
+                return dto;
+            })
+            .toList();
+
+        // Step 4: Manual pagination
+        int start = page * size;
+        int end = Math.min(start + size, allDto.size());
+        List<ArtifactDTO> pageContent = start >= allDto.size() ? List.of() : allDto.subList(start, end);
+        Page<ArtifactDTO> resultPage = new PageImpl<>(pageContent, PageRequest.of(page, size), allDto.size());
+
+        return ResponseEntity.ok(resultPage);
+    }
+
+    
+    @GetMapping("/my-artworks/stats")
+    public ResponseEntity<Map<String, Long>> getCuratorArtworkStats(HttpSession session) {
+        User user = (User) session.getAttribute("loggedInUser");
+        if (user == null) return ResponseEntity.status(401).build();
+
+        List<UserArtifact> all = userArtifactRepository.findByUserId(user.getUserId());
+
+        long accepted = all.stream().filter(ua -> ua.getStatus() == ApplicationStatus.accepted).count();
+        long pending = all.stream().filter(ua -> ua.getStatus() == ApplicationStatus.pending).count();
+        long rejected = all.stream().filter(ua -> ua.getStatus() == ApplicationStatus.rejected).count();
+
+        Map<String, Long> stats = Map.of(
+            "total", (long) all.size(),
+            "accepted", accepted,
+            "pending", pending,
+            "rejected", rejected
+        );
+
+        return ResponseEntity.ok(stats);
     }
 
     

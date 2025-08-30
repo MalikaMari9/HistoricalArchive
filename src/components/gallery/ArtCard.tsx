@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Star, Bookmark, MessageCircle, Heart, Reply, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  Star,
+  Bookmark,
+  MessageCircle,
+  Heart,
+  Reply,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -18,6 +28,7 @@ import {
   getCommentsByArtifact,
   postComment,
   reactToComment,
+  deleteComment,
   type RatingDTO,
 } from '@/services/api';
 
@@ -37,6 +48,7 @@ interface Comment {
   isReplying?: boolean;
   replyContent?: string;
   parentId?: number;
+  canDelete?: boolean;
 }
 
 interface ArtCardProps {
@@ -52,15 +64,8 @@ interface ArtCardProps {
   image: string;
   images?: ImageLike[];
   location?: { city?: string; country?: string; continent?: string };
-
-  // (optional / legacy)
-  rating?: number;
-  totalRatings?: number;
-  onRate?: (artId: string, rating: number) => void;
-
-  averageRating?: number;  // used for star display
-  userCount?: number;      // used for star display
-
+  averageRating?: number;
+  userCount?: number;
   initialBookmarked?: boolean;
   onBookmarkChange?: (bookmarked: boolean) => void;
 }
@@ -82,6 +87,7 @@ export const ArtCard = (props: ArtCardProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isCommentLoading, setIsCommentLoading] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
+  // State to track expanded replies for each comment
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
 
   const [localAverageRating, setLocalAverageRating] = useState(averageRating);
@@ -93,7 +99,6 @@ export const ArtCard = (props: ArtCardProps) => {
   const artId = _id || id;
   const displayArtist = artist || culture || 'Unknown';
 
-  // Compact location text
   const locationParts = [
     location?.city?.trim(),
     location?.country?.trim(),
@@ -102,44 +107,33 @@ export const ArtCard = (props: ArtCardProps) => {
   const hasLocation = locationParts.length > 0;
   const locationString = locationParts.join(', ');
 
-  /* --------------------------- Initialize bookmark flag --------------------------- */
-useEffect(() => {
-  let cancelled = false;
+  // Bookmark logic
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!artId) return;
+      if (initialBookmarked) {
+        setBookmarked(true);
+        return;
+      }
+      if (!currentUser?.userId) return;
+      try {
+        const flagged = await checkBookmark(artId);
+        if (!cancelled) setBookmarked(flagged);
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialBookmarked, artId, currentUser?.userId]);
 
-  (async () => {
-    if (!artId) return;
-
-    if (initialBookmarked) {
-      setBookmarked(true);
-      return;
-    }
-
-    // ✅ only run bookmark check if logged in
-    if (!currentUser?.userId) {
-      return;
-    }
-
-    try {
-      const flagged = await checkBookmark(artId);
-      if (!cancelled) setBookmarked(flagged);
-    } catch {
-      // Optionally log or toast for debugging
-    }
-  })();
-
-  return () => {
-    cancelled = true;
-  };
-}, [initialBookmarked, artId, currentUser?.userId]);
-
-
-  /* ---------------------------- Lazy-load comments UI ---------------------------- */
+  // Comments lazy-load
   useEffect(() => {
     if (commentOpen) fetchComments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commentOpen, artId]);
 
-  /* ------------------------------- Ratings snapshot ------------------------------ */
+  // Ratings snapshot
   useEffect(() => {
     fetchRatings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,16 +141,13 @@ useEffect(() => {
 
   const handleBookmarkToggle = async () => {
     if (!artId) return;
-
     if (!currentUser?.userId) {
       toast({ title: 'Login required', description: 'Please sign in to save items.', variant: 'destructive' });
       return;
     }
-
     const prev = bookmarked;
     setBookmarked(!prev);
     setBookmarkBusy(true);
-
     try {
       if (!prev) {
         await createBookmark(artId);
@@ -187,7 +178,7 @@ useEffect(() => {
     setIsCommentLoading(true);
     try {
       const data = await getCommentsByArtifact(artId);
-      const formatted = data.map((comment) => ({
+      const formatComment = (comment: any): Comment => ({
         commentId: comment.commentId,
         content: comment.comment,
         author: comment.userId === currentUser?.userId ? 'You' : comment.username,
@@ -197,24 +188,12 @@ useEffect(() => {
         likesCount: comment.reactionCount || 0,
         isLiked: comment.isReacted || false,
         userId: comment.userId,
-        replies:
-          (comment.replies ?? []).map((reply) => ({
-            commentId: reply.commentId,
-            content: reply.comment,
-            author: reply.userId === currentUser?.userId ? 'You' : reply.username,
-            username: reply.username,
-            avatar: (reply as any).avatar,
-            timestamp: formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true }),
-            likesCount: reply.reactionCount || 0,
-            isLiked: reply.isReacted || false,
-            userId: reply.userId,
-            replies: [],
-            parentId: reply.parentId,
-          })) || [],
-      }));
-      setComments(formatted);
+        replies: (comment.replies ?? []).map(formatComment),
+        parentId: comment.parentId,
+        canDelete: comment.userId === currentUser?.userId,
+      });
+      setComments(data.map(formatComment));
     } catch (error) {
-      console.error('Failed to load comments:', error);
       toast({ title: 'Error', description: 'Failed to load comments', variant: 'destructive' });
     } finally {
       setIsCommentLoading(false);
@@ -227,9 +206,7 @@ useEffect(() => {
       const data: RatingDTO = await getArtifactRatingInfo(artId);
       setLocalAverageRating(data.averageRating ?? 0);
       setLocalUserCount(data.totalRatings ?? 0);
-    } catch (error) {
-      console.error('Failed to fetch rating info:', error);
-    }
+    } catch {}
   };
 
   const toggleReplies = (commentId: number) => {
@@ -244,8 +221,24 @@ useEffect(() => {
     navigate(`/artwork/${artId}`);
   };
 
-  /* --------------------------------- Comments --------------------------------- */
+  // Function to calculate the total number of comments and nested replies
+  const getTotalCommentCount = (comments: Comment[]): number => {
+    let count = 0;
+    const stack = [...comments];
+    while (stack.length > 0) {
+      const comment = stack.pop();
+      if (comment) {
+        count++;
+        if (comment.replies && comment.replies.length > 0) {
+          stack.push(...comment.replies);
+        }
+      }
+    }
+    return count;
+  };
+  const totalCommentCount = getTotalCommentCount(comments);
 
+  // ----------- Comments logic -----------
   const handlePostComment = async () => {
     if (!currentUser?.userId) {
       toast({ title: 'Error', description: 'You must be logged in to comment', variant: 'destructive' });
@@ -256,15 +249,13 @@ useEffect(() => {
       toast({ title: 'Error', description: 'Comment cannot be empty', variant: 'destructive' });
       return;
     }
-
     setIsLoading(true);
     try {
       await postComment({ artifactId: artId, content: trimmedComment });
       setNewComment('');
       toast({ title: 'Success', description: 'Comment posted successfully' });
-      fetchComments(); // refresh list
+      fetchComments();
     } catch (error) {
-      console.error('Comment submission error:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to post comment',
@@ -275,27 +266,20 @@ useEffect(() => {
     }
   };
 
+  // Like/Unlike comment or reply (recursive)
   const handleLikeComment = async (commentId: number, _isLiked: boolean) => {
     if (!currentUser?.userId) {
       toast({ title: 'Error', description: 'You must be logged in to like comments.', variant: 'destructive' });
       return;
     }
-
     try {
       const data = await reactToComment({ commentId, userId: currentUser.userId });
-      setComments((prev) =>
-        prev.map((c) => {
-          if (c.commentId === commentId) {
-            return { ...c, isLiked: data.isReacted, likesCount: data.reactionCount };
-          }
-          const replies = c.replies.map((r) =>
-            r.commentId === commentId ? { ...r, isLiked: data.isReacted, likesCount: data.reactionCount } : r
-          );
-          return { ...c, replies };
-        })
-      );
+      setComments((prev) => updateCommentInTree(prev, commentId, (c) => ({
+        ...c,
+        isLiked: data.isReacted,
+        likesCount: data.reactionCount,
+      })));
     } catch (error) {
-      console.error('Failed to toggle reaction:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to update reaction status.',
@@ -304,73 +288,246 @@ useEffect(() => {
     }
   };
 
+  // Start reply input for a comment (recursive)
   const handleStartReply = (commentId: number) => {
-    setComments((prev) =>
-      prev.map((c) => (c.commentId === commentId ? { ...c, isReplying: true, replyContent: '' } : c))
-    );
+    setComments((prev) => updateCommentInTree(prev, commentId, (c) => ({
+      ...c,
+      isReplying: true,
+      replyContent: '',
+    })));
   };
 
+  // Cancel reply input for a comment (recursive)
   const handleCancelReply = (commentId: number) => {
-    setComments((prev) =>
-      prev.map((c) => (c.commentId === commentId ? { ...c, isReplying: false, replyContent: '' } : c))
-    );
+    setComments((prev) => updateCommentInTree(prev, commentId, (c) => ({
+      ...c,
+      isReplying: false,
+      replyContent: '',
+    })));
   };
 
+  // Change reply input for a comment (recursive)
   const handleReplyChange = (commentId: number, text: string) => {
-    setComments((prev) => prev.map((c) => (c.commentId === commentId ? { ...c, replyContent: text } : c)));
+    setComments((prev) => updateCommentInTree(prev, commentId, (c) => ({
+      ...c,
+      replyContent: text,
+    })));
   };
 
+  // Post reply to a comment (recursive, supports nested replies)
   const handlePostReply = async (commentId: number) => {
-    const parentComment = comments.find((c) => c.commentId === commentId);
+    const findComment = (list: Comment[]): Comment | undefined => {
+      for (const c of list) {
+        if (c.commentId === commentId) return c;
+        if (c.replies.length) {
+          const found = findComment(c.replies);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+    const parentComment = findComment(comments);
     if (!parentComment || !parentComment.replyContent?.trim()) {
       toast({ title: 'Error', description: 'Reply cannot be empty', variant: 'destructive' });
       return;
     }
-
     try {
       const newReply = await postComment({
         artifactId: artId,
         content: parentComment.replyContent,
         parentId: commentId,
       });
-
-      // Optimistic UI: prepend reply to that comment
-      setComments((prev) =>
-        prev.map((c) =>
-          c.commentId === commentId
-            ? {
-                ...c,
-                replies: [
-                  {
-                    commentId: newReply.commentId,
-                    content: newReply.comment,
-                    author: 'You',
-                    username: currentUser!.username,
-                    timestamp: 'Just now',
-                    likesCount: 0,
-                    isLiked: false,
-                    userId: currentUser!.userId,
-                    replies: [],
-                    parentId: commentId,
-                  },
-                  ...c.replies,
-                ],
-                isReplying: false,
-                replyContent: '',
-              }
-            : c
-        )
-      );
-
+      const replyObj: Comment = {
+        commentId: newReply.commentId,
+        content: newReply.comment,
+        author: 'You',
+        username: currentUser!.username,
+        timestamp: 'Just now',
+        likesCount: 0,
+        isLiked: false,
+        userId: currentUser!.userId,
+        replies: [],
+        parentId: commentId,
+        canDelete: true,
+      };
+      // FIX: Use a single setComments call to ensure a consistent state update
+      setComments((prev) => {
+        const updatedWithReply = addReplyToTree(prev, commentId, replyObj);
+        return updateCommentInTree(updatedWithReply, commentId, (c) => ({
+          ...c,
+          isReplying: false,
+          replyContent: '',
+        }));
+      });
       toast({ title: 'Success', description: 'Reply posted successfully' });
     } catch (error) {
-      console.error('Failed to post reply:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to post reply',
         variant: 'destructive',
       });
     }
+  };
+
+  // Delete comment/reply (recursive)
+  const handleDeleteComment = async (commentId: number) => {
+    if (!currentUser?.userId) {
+      toast({ title: 'Error', description: 'You must be logged in to delete comments', variant: 'destructive' });
+      return;
+    }
+    try {
+      const result = await deleteComment(commentId);
+      if (result.success) {
+        toast({ title: 'Success', description: 'Comment deleted successfully' });
+        setComments((prev) => deleteCommentFromTree(prev, commentId));
+      } else {
+        toast({ title: 'Error', description: result.message || 'Failed to delete comment', variant: 'destructive' });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete comment',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // ----------- Recursive helpers for nested comments/replies -----------
+  function updateCommentInTree(list: Comment[], commentId: number, updateFn: (c: Comment) => Comment): Comment[] {
+    return list.map((c) => {
+      if (c.commentId === commentId) {
+        return updateFn(c);
+      }
+      if (c.replies?.length) {
+        return { ...c, replies: updateCommentInTree(c.replies, commentId, updateFn) };
+      }
+      return c;
+    });
+  }
+
+  function addReplyToTree(list: Comment[], parentId: number, newReply: Comment): Comment[] {
+    return list.map((c) => {
+      if (c.commentId === parentId) {
+        return { ...c, replies: [newReply, ...c.replies] };
+      }
+      if (c.replies?.length) {
+        return { ...c, replies: addReplyToTree(c.replies, parentId, newReply) };
+      }
+      return c;
+    });
+  }
+
+  function deleteCommentFromTree(list: Comment[], commentId: number): Comment[] {
+    return list
+      .filter((c) => c.commentId !== commentId)
+      .map((c) => ({
+        ...c,
+        replies: c.replies ? deleteCommentFromTree(c.replies, commentId) : [],
+      }));
+  }
+
+  // ----------- Recursive rendering for nested replies -----------
+  const renderReplies = (replies: Comment[], parentId: number, depth = 0) => {
+    const showAllReplies = expandedReplies[parentId];
+    const displayedReplies = showAllReplies ? replies : replies.slice(0, 2);
+  
+    return (
+      <div className={`mt-3 pl-6 border-l-2 border-gray-200`}>
+        {displayedReplies.map((reply) => (
+          <div key={reply.commentId} className="mb-3">
+            <div className="flex items-start space-x-3">
+              <Avatar className="w-6 h-6">
+                <AvatarImage src={reply.avatar} />
+                <AvatarFallback>{reply.username?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-medium">{reply.author}</span>
+                  <span className="text-xs text-muted-foreground">{reply.timestamp}</span>
+                </div>
+                <p className="text-xs mt-1">{reply.content}</p>
+                <div className="flex items-center space-x-4 pt-2">
+                  <button
+                    className="flex items-center space-x-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => handleLikeComment(reply.commentId, reply.isLiked)}
+                    aria-label={reply.isLiked ? 'Unlike reply' : 'Like reply'}
+                  >
+                    <Heart className={`w-3 h-3 ${reply.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
+                    <span>{reply.likesCount}</span>
+                  </button>
+                  <button
+                    className="flex items-center space-x-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => handleStartReply(reply.commentId)}
+                    aria-label="Reply to reply"
+                  >
+                    <Reply className="w-3 h-3" />
+                    <span>Reply</span>
+                  </button>
+                  {reply.canDelete && (
+                    <button
+                      className="flex items-center space-x-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      onClick={() => handleDeleteComment(reply.commentId)}
+                      aria-label="Delete reply"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                </div>
+                {/* Reply input for nested reply */}
+                {reply.isReplying && (
+                  <div className="mt-3 pl-6">
+                    <div className="flex items-start space-x-2">
+                      <Avatar className="w-6 h-6">
+                        <AvatarFallback>{currentUser?.username?.[0]?.toUpperCase() || 'Y'}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <textarea
+                          className="w-full text-xs p-2 border rounded"
+                          placeholder="Write your reply..."
+                          value={reply.replyContent || ''}
+                          onChange={(e) => handleReplyChange(reply.commentId, e.target.value)}
+                        />
+                        <div className="flex justify-end space-x-2 mt-2">
+                          <Button variant="ghost" size="sm" onClick={() => handleCancelReply(reply.commentId)}>
+                            Cancel
+                          </Button>
+                          <Button variant="default" size="sm" onClick={() => handlePostReply(reply.commentId)}>
+                            Reply
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Nested replies */}
+                {reply.replies && reply.replies.length > 0 && renderReplies(reply.replies, reply.commentId, depth + 1)}
+              </div>
+            </div>
+          </div>
+        ))}
+        {replies.length > 2 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground text-xs mt-2"
+            onClick={() => toggleReplies(parentId)}
+          >
+            {showAllReplies ? (
+              <>
+                <ChevronUp className="h-3 w-3 mr-1" />
+                Show fewer replies
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3 w-3 mr-1" />
+                Show all {replies.length} replies
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -384,7 +541,6 @@ useEffect(() => {
             (e.target as HTMLImageElement).src = '/placeholder-art.jpg';
           }}
         />
-
         {/* Save (corner) */}
         <button
           onClick={handleBookmarkToggle}
@@ -398,17 +554,13 @@ useEffect(() => {
 
       <CardContent className="p-4 space-y-3">
         <h3 className="font-semibold text-lg text-foreground line-clamp-2">{title}</h3>
-
         <div className="flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted-foreground">
           <span>by {displayArtist}</span>
           {period && <span>• {period}</span>}
           {category && <span>• {category}</span>}
         </div>
-
         {description && <p className="text-sm text-muted-foreground line-clamp-2">{description}</p>}
-
         {medium && <p className="text-xs text-muted-foreground italic">Medium: {medium}</p>}
-
         {hasLocation && <p className="text-xs text-muted-foreground">From: {locationString}</p>}
 
         <div className="flex items-center justify-between pt-2">
@@ -448,7 +600,7 @@ useEffect(() => {
               <PopoverContent className="w-96 p-0" align="end">
                 <div className="p-4 border-b">
                   <h4 className="font-semibold text-sm">Comments</h4>
-                  <p className="text-xs text-muted-foreground">{comments.length} comments</p>
+                  <p className="text-xs text-muted-foreground">{totalCommentCount} comments</p>
                 </div>
 
                 <div className="max-h-80 overflow-y-auto">
@@ -494,6 +646,16 @@ useEffect(() => {
                                   <Reply className="w-3 h-3" />
                                   <span>Reply</span>
                                 </button>
+                                {comment.canDelete && (
+                                  <button
+                                    className="flex items-center space-x-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                                    onClick={() => handleDeleteComment(comment.commentId)}
+                                    aria-label="Delete comment"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Delete</span>
+                                  </button>
+                                )}
                               </div>
 
                               {/* Reply input */}
@@ -523,59 +685,8 @@ useEffect(() => {
                                 </div>
                               )}
 
-                              {/* Replies list */}
-                              {replyCount > 0 && (
-                                <div className="mt-3 pl-6 border-l-2 border-gray-200">
-                                  {displayedReplies.map((reply) => (
-                                    <div key={reply.commentId} className="mb-3">
-                                      <div className="flex items-start space-x-3">
-                                        <Avatar className="w-6 h-6">
-                                          <AvatarImage src={reply.avatar} />
-                                          <AvatarFallback>{reply.username?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1">
-                                          <div className="flex items-center space-x-2">
-                                            <span className="text-xs font-medium">{reply.author}</span>
-                                            <span className="text-xs text-muted-foreground">{reply.timestamp}</span>
-                                          </div>
-                                          <p className="text-xs mt-1">{reply.content}</p>
-                                          <div className="flex items-center space-x-4 pt-2">
-                                            <button
-                                              className="flex items-center space-x-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                                              onClick={() => handleLikeComment(reply.commentId, reply.isLiked)}
-                                              aria-label={reply.isLiked ? 'Unlike reply' : 'Like reply'}
-                                            >
-                                              <Heart className={`w-3 h-3 ${reply.isLiked ? 'fill-red-500 text-red-500' : ''}`} />
-                                              <span>{reply.likesCount}</span>
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-
-                                  {replyCount > 2 && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-muted-foreground hover:text-foreground text-xs mt-2"
-                                      onClick={() => toggleReplies(comment.commentId)}
-                                    >
-                                      {showAllReplies ? (
-                                        <>
-                                          <ChevronUp className="h-3 w-3 mr-1" />
-                                          Show fewer replies
-                                        </>
-                                      ) : (
-                                        <>
-                                          <ChevronDown className="h-3 w-3 mr-1" />
-                                          Show all {replyCount} replies
-                                        </>
-                                      )}
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
+                              {/* Replies list (recursive) */}
+                              {replyCount > 0 && renderReplies(comment.replies, comment.commentId)}
                             </div>
                           </div>
                         </div>

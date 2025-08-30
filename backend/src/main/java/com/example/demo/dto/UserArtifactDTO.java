@@ -8,8 +8,28 @@ public class UserArtifactDTO {
     private Integer userId;
     private Instant savedAt;
     private String status;
+    private String reason;
+    private Integer professorId;
+    
+    
 
-    public String getStatus() {
+    public String getReason() {
+		return reason;
+	}
+
+	public void setReason(String reason) {
+		this.reason = reason;
+	}
+
+	public Integer getProfessorId() {
+		return professorId;
+	}
+
+	public void setProfessorId(Integer professorId) {
+		this.professorId = professorId;
+	}
+
+	public String getStatus() {
 		return status;
 	}
 

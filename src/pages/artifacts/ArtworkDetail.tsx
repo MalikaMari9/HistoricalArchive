@@ -14,6 +14,9 @@ import {
   MessageCircle,
   Share2,
   Star,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -30,7 +33,15 @@ import {
   type ArtifactDetail,
   type CommentDTO,
   type RatingDTO,
+  deleteComment,
+  getArtifactStatus,
+  checkBookmark,
+  createBookmark,
+  deleteBookmark,
+  getUserArtifactStatus, getUserArtifact, type UserArtifactDTO,
 } from "@/services/api";
+
+type AppStatus = "pending" | "accepted" | "rejected";
 
 interface ArtworkImage {
   date?: string;
@@ -71,6 +82,7 @@ interface Artwork {
   totalRatings?: number;
   artist_name?: string;
   image_url?: string;
+  status?: AppStatus;
 }
 
 interface Comment {
@@ -85,6 +97,167 @@ interface Comment {
   isReacted?: boolean;
 }
 
+// Recursive Comment Component
+const CommentItem = ({ 
+  comment, 
+  onReply, 
+  onReact, 
+  onDelete, 
+  currentUser, 
+  isReacting,
+  depth = 0 
+}: {
+  comment: Comment;
+  onReply: (parentId: number, content: string) => Promise<void>;
+  onReact: (commentId: number) => Promise<void>;
+  onDelete: (commentId: number) => Promise<void>;
+  currentUser: any;
+  isReacting: boolean;
+  depth?: number;
+}) => {
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyContent, setReplyContent] = useState("");
+  const [isPosting, setIsPosting] = useState(false);
+  const [showAllReplies, setShowAllReplies] = useState(false);
+
+  const handlePostReply = async () => {
+    if (!replyContent.trim()) return;
+    
+    setIsPosting(true);
+    try {
+      await onReply(comment.commentId, replyContent);
+      setReplyContent("");
+      setIsReplying(false);
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const displayedReplies = showAllReplies ? comment.replies : (comment.replies || []).slice(0, 2);
+  const hasMoreReplies = (comment.replies?.length || 0) > 2;
+
+  return (
+    <div className={`flex items-start gap-3 ${depth > 0 ? 'mt-4' : ''}`}>
+      <div className="flex-shrink-0">
+        <Avatar className="w-10 h-10">
+          <AvatarFallback>{comment.username[0]?.toUpperCase() || 'U'}</AvatarFallback>
+        </Avatar>
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <h5 className="font-medium text-sm">{comment.username}</h5>
+          <span className="text-xs text-muted-foreground">
+            {new Date(comment.createdAt).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+        </div>
+        <p className="text-sm text-foreground mt-1">{comment.comment}</p>
+        
+        <div className="flex items-center gap-4 mt-2">
+          <button
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => onReact(comment.commentId)}
+            disabled={isReacting}
+          >
+            <Heart
+              className={`w-4 h-4 ${
+                comment.isReacted ? "fill-red-500 text-red-500" : ""
+              }`}
+            />
+            <span>{comment.reactionCount}</span>
+          </button>
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setIsReplying(!isReplying)}
+          >
+            Reply
+          </button>
+          {currentUser?.userId === comment.userId && (
+            <button
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              onClick={() => onDelete(comment.commentId)}
+              aria-label="Delete comment"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {isReplying && (
+          <div className="mt-4 space-y-2">
+            <textarea
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+              placeholder="Write your reply..."
+              className="w-full text-sm p-2 border rounded"
+              rows={3}
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handlePostReply}
+                disabled={!replyContent.trim() || isPosting}
+              >
+                {isPosting ? "Posting..." : "Post Reply"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsReplying(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {displayedReplies && displayedReplies.length > 0 && (
+          <div className={`mt-3 pl-6 border-l-2 border-muted ${depth >= 3 ? 'ml-0 pl-4 border-l-0' : ''}`}>
+            {displayedReplies.map((reply) => (
+              <CommentItem
+                key={reply.commentId}
+                comment={reply}
+                onReply={onReply}
+                onReact={onReact}
+                onDelete={onDelete}
+                currentUser={currentUser}
+                isReacting={isReacting}
+                depth={depth + 1}
+              />
+            ))}
+          </div>
+        )}
+
+        {hasMoreReplies && (
+          <Button 
+            variant="ghost" 
+            size="sm"
+            className="flex items-center gap-1 text-xs text-muted-foreground mt-3"
+            onClick={() => setShowAllReplies(!showAllReplies)}
+          >
+            {showAllReplies ? (
+              <>
+                <ChevronUp className="w-3 h-3" />
+                Hide replies
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3" />
+                Show all {comment.replies?.length} replies
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function ArtworkDetail() {
   const { _id } = useParams();
   const navigate = useNavigate();
@@ -97,8 +270,6 @@ export default function ArtworkDetail() {
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyContent, setReplyContent] = useState("");
   const [isPosting, setIsPosting] = useState(false);
   const [isReacting, setIsReacting] = useState(false);
 
@@ -107,47 +278,93 @@ export default function ArtworkDetail() {
   const [isRating, setIsRating] = useState(false);
   const [isRemovingRating, setIsRemovingRating] = useState(false);
 
-  useEffect(() => {
-    if (!_id) return;
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isBookmarkLoading, setIsBookmarkLoading] = useState(false);
+  const [isLoadingStatus, setIsLoadingStatus] = useState(true);
 
-    const load = async () => {
-      try {
-        setIsLoading(true);
+  // Update the useEffect hook that loads artwork data
+useEffect(() => {
+  if (!_id) return;
 
-        // Artifact details
-        const art: ArtifactDetail = await getArtifactById(_id);
-        setArtwork(normalizeArtworkData(art));
+  const loadArtworkData = async () => {
+    try {
+      setIsLoading(true);
 
-        // Comments
-        const cms: CommentDTO[] = await getCommentsByArtifact(_id);
-        setComments(cms as unknown as Comment[]);
+      // Artifact details
+      const art: ArtifactDetail = await getArtifactById(_id);
+      const normalizedArtwork = normalizeArtworkData(art);
+      setArtwork(normalizedArtwork);
 
-        // Rating summary (+ userRating if logged in)
-        const rating: RatingDTO = await getArtifactRatingInfo(_id);
-        setArtwork((prev) =>
-          prev
-            ? {
-                ...prev,
-                averageRating: rating.averageRating ?? 0,
-                totalRatings: rating.totalRatings ?? 0,
-              }
-            : prev
-        );
-        if (rating.userRating != null) setUserRating(rating.userRating);
-      } catch (err) {
-        console.error("Error loading artwork detail:", err);
-        toast({
-          title: "Error",
-          description: "Could not load artwork details",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
+      // Comments
+      const cms: CommentDTO[] = await getCommentsByArtifact(_id);
+      setComments(cms as unknown as Comment[]);
+
+      // Rating summary (+ userRating if logged in)
+      const rating: RatingDTO = await getArtifactRatingInfo(_id);
+      setArtwork((prev) =>
+        prev
+          ? {
+              ...prev,
+              averageRating: rating.averageRating ?? 0,
+              totalRatings: rating.totalRatings ?? 0,
+            }
+          : prev
+      );
+      if (rating.userRating != null) setUserRating(rating.userRating);
+
+      // Check if artifact is bookmarked (if user is logged in)
+      if (currentUser?.userId) {
+        const bookmarked = await checkBookmark(_id);
+        setIsBookmarked(bookmarked);
       }
-    };
 
-    load();
-  }, [_id, toast]);
+      // Load artifact status - different logic for professors vs regular users
+      if (currentUser?.userId) {
+        // For professors, get the general artifact status
+        if (currentUser?.role === 'professor') {
+          try {
+            const artifactStatuses = await getArtifactStatus(_id);
+            if (artifactStatuses.length > 0) {
+              const firstStatus = artifactStatuses[0];
+              setArtwork(prev => prev ? {
+                ...prev,
+                status: (firstStatus.status?.toLowerCase() as AppStatus) || 'pending'
+              } : prev);
+            }
+          } catch (err) {
+            console.error("Error loading artifact status for professor:", err);
+          }
+        } 
+        // For regular users (artifact owners), get their specific user artifact status
+        else {
+          try {
+            const userArtifactStatus = await getUserArtifactStatus(_id, currentUser.userId);
+            if (userArtifactStatus) {
+              setArtwork(prev => prev ? {
+                ...prev,
+                status: (userArtifactStatus.toLowerCase() as AppStatus) || 'pending'
+              } : prev);
+            }
+          } catch (error) {
+            console.error("Error loading user artifact status:", error);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error loading artwork detail:", err);
+      toast({
+        title: "Error",
+        description: "Could not load artwork details",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+      setIsLoadingStatus(false);
+    }
+  };
+
+  loadArtworkData();
+}, [_id, toast, currentUser?.userId, currentUser?.role]);
 
   const normalizeArtworkData = (data: any): Artwork => ({
     _id: data._id ?? data.id ?? data.artifactId,
@@ -176,6 +393,7 @@ export default function ArtworkDetail() {
     artist_name: data.artist_name || data.uploaded_by,
     averageRating: data.averageRating || 0,
     totalRatings: data.totalRatings || 0,
+    status: (data.status?.toLowerCase() || 'pending') as AppStatus,
   });
 
   const getImageUrlFromHarvard = (img: any): string | null => {
@@ -185,8 +403,48 @@ export default function ArtworkDetail() {
     return null;
   };
 
-  /* ------------------------------ Ratings logic ------------------------------ */
+  const handleBookmarkToggle = async () => {
+    if (!currentUser?.userId) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to save artifacts",
+        variant: "destructive",
+      });
+      return;
+    }
 
+    if (!_id) return;
+
+    setIsBookmarkLoading(true);
+    try {
+      if (isBookmarked) {
+        await deleteBookmark(_id);
+        setIsBookmarked(false);
+        toast({
+          title: "Success",
+          description: "Artifact removed from saved items",
+        });
+      } else {
+        await createBookmark(_id);
+        setIsBookmarked(true);
+        toast({
+          title: "Success",
+          description: "Artifact saved successfully",
+        });
+      }
+    } catch (error) {
+      console.error("Error toggling bookmark:", error);
+      toast({
+        title: "Error",
+        description: "Could not update bookmark",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBookmarkLoading(false);
+    }
+  };
+
+  /* ------------------------------ Ratings logic ------------------------------ */
   const handleStarClick = async (starRating: number) => {
     if (!currentUser?.userId) {
       toast({
@@ -337,7 +595,6 @@ export default function ArtworkDetail() {
   );
 
   /* ------------------------------- Misc helpers ------------------------------ */
-
   const getUploadDate = (): string => {
     if (!artwork?.uploaded_at) return "Unknown date";
     try {
@@ -360,12 +617,22 @@ export default function ArtworkDetail() {
   };
 
   const handleTagClick = (tag: string) => {
-    // Navigate to gallery page with tag-specific detailed search
     navigate(`/gallery?tags=${encodeURIComponent(tag)}`);
   };
 
-  /* --------------------------------- Comments -------------------------------- */
+  const getStatusColor = (status: AppStatus | undefined) => {
+    switch (status) {
+      case "accepted":
+        return "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-300";
+      case "rejected":
+        return "bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-300";
+      case "pending":
+      default:
+        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-200 dark:bg-yellow-900 dark:text-yellow-300";
+    }
+  };
 
+  /* --------------------------------- Comments -------------------------------- */
   const handleReact = async (commentId: number) => {
     if (!currentUser?.userId) {
       toast({
@@ -403,21 +670,23 @@ export default function ArtworkDetail() {
     reactionData: { reactionCount: number; isReacted: boolean }
   ): Comment[] =>
     list.map((c) => {
-      if (c.commentId === commentId)
+      if (c.commentId === commentId) {
         return {
           ...c,
           reactionCount: reactionData.reactionCount,
           isReacted: reactionData.isReacted,
         };
-      if (c.replies?.length)
+      }
+      if (c.replies?.length) {
         return {
           ...c,
           replies: updateCommentReaction(c.replies, commentId, reactionData),
         };
+      }
       return c;
     });
 
-  const handlePostComment = async () => {
+  const handlePostComment = async (parentId: number | null, content: string) => {
     if (!currentUser?.userId) {
       toast({
         title: "Error",
@@ -428,7 +697,6 @@ export default function ArtworkDetail() {
     }
     if (!_id) return;
 
-    const content = replyingTo ? replyContent : newComment;
     if (!content.trim()) {
       toast({
         title: "Error",
@@ -443,10 +711,10 @@ export default function ArtworkDetail() {
       const data = await postComment({
         artifactId: _id,
         content,
-        parentId: replyingTo || undefined,
+        parentId: parentId || undefined,
       });
 
-      const newC: Comment = {
+      const newComment: Comment = {
         commentId: data.commentId,
         comment: data.comment,
         userId: data.userId,
@@ -457,18 +725,28 @@ export default function ArtworkDetail() {
         replies: [],
       };
 
-      if (replyingTo) {
-        setComments((prev) =>
-          prev.map((c) =>
-            c.commentId === replyingTo
-              ? { ...c, replies: [newC, ...(c.replies || [])] }
-              : c
-          )
-        );
-        setReplyContent("");
-        setReplyingTo(null);
+      if (parentId) {
+        const addReplyToComment = (comments: Comment[]): Comment[] => {
+          return comments.map(comment => {
+            if (comment.commentId === parentId) {
+              return {
+                ...comment,
+                replies: [newComment, ...(comment.replies || [])],
+              };
+            }
+            if (comment.replies) {
+              return {
+                ...comment,
+                replies: addReplyToComment(comment.replies),
+              };
+            }
+            return comment;
+          });
+        };
+        
+        setComments(addReplyToComment(comments));
       } else {
-        setComments((prev) => [newC, ...prev]);
+        setComments(prev => [newComment, ...prev]);
         setNewComment("");
       }
 
@@ -485,84 +763,57 @@ export default function ArtworkDetail() {
     }
   };
 
-  const renderComment = (comment: Comment) => (
-    <div key={comment.commentId} className="flex items-start gap-3">
-      <Avatar className="w-10 h-10">
-        <AvatarFallback>{comment.username[0]}</AvatarFallback>
-      </Avatar>
-      <div className="flex-1 space-y-2">
-        <div className="flex items-center gap-2">
-          <h5 className="font-medium text-sm">{comment.username}</h5>
-          <span className="text-xs text-muted-foreground">
-            {new Date(comment.createdAt).toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
-        </div>
-        <p className="text-sm text-foreground">{comment.comment}</p>
-        <div className="flex items-center gap-4">
-          <button
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => handleReact(comment.commentId)}
-            disabled={isReacting}
-          >
-            <Heart
-              className={`w-4 h-4 ${
-                comment.isReacted ? "fill-red-500 text-red-500" : ""
-              }`}
-            />
-            <span>{comment.reactionCount}</span>
-          </button>
-          <button
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => {
-              setReplyingTo(comment.commentId);
-              setReplyContent("");
-            }}
-          >
-            Reply
-          </button>
-        </div>
+  const removeCommentFromTree = (comments: Comment[], commentId: number): Comment[] => {
+    return comments
+      .filter(comment => comment.commentId !== commentId)
+      .map(comment => ({
+        ...comment,
+        replies: comment.replies ? removeCommentFromTree(comment.replies, commentId) : [],
+      }));
+  };
 
-        {replyingTo === comment.commentId && (
-          <div className="mt-4 space-y-2">
-            <textarea
-              value={replyContent}
-              onChange={(e) => setReplyContent(e.target.value)}
-              placeholder="Write your reply..."
-              className="w-full text-sm p-2 border rounded"
-              rows={3}
-            />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={handlePostComment}
-                disabled={!replyContent.trim() || isPosting}
-              >
-                {isPosting ? "Posting..." : "Post Reply"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setReplyingTo(null)}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const handleDeleteComment = async (commentId: number) => {
+    if (!currentUser?.userId) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to delete comments",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const result = await deleteComment(commentId);
+      if (result.success) {
+        setComments(prev => removeCommentFromTree(prev, commentId));
+        toast({ title: "Success", description: "Comment deleted successfully" });
+      } else {
+        toast({
+          title: "Error",
+          description: result.message || "Failed to delete comment",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting comment:", error);
+      toast({
+        title: "Error",
+        description: "Could not delete comment",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const countTotalComments = (comments: Comment[]): number => {
+    return comments.reduce((total, comment) => {
+      return total + 1 + (comment.replies ? countTotalComments(comment.replies) : 0);
+    }, 0);
+  };
 
   if (isLoading)
     return (
       <div className="min-h-screen flex items-center justify-center">
-        Loading...
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
 
@@ -588,6 +839,8 @@ export default function ArtworkDetail() {
 
   const artistName =
     artwork.artist_name || artwork.uploaded_by || "Unknown artist";
+    
+  const statusLabel = artwork.status ? artwork.status.charAt(0).toUpperCase() + artwork.status.slice(1) : 'Pending';
 
   return (
     <div className="min-h-screen bg-background">
@@ -597,6 +850,22 @@ export default function ArtworkDetail() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="font-semibold text-lg truncate">{artwork.title}</h1>
+                
+          {isLoadingStatus ? (
+  <Badge className="ml-auto bg-gray-100 text-gray-800 animate-pulse">
+    Loading...
+  </Badge>
+) : (
+  (currentUser?.role === 'professor' || currentUser?.username === artwork.uploaded_by) && /^a_[a-zA-Z0-9]+$/.test(artwork._id) && 
+  artwork.status && (
+    <Badge className={`ml-auto ${getStatusColor(artwork.status)}`}>
+      {statusLabel}
+      {artwork.status === 'pending' && (
+        <span className="ml-1 animate-pulse">•</span>
+      )}
+    </Badge>
+  )
+)}
         </div>
       </div>
 
@@ -695,26 +964,34 @@ export default function ArtworkDetail() {
                 <div className="flex items-center gap-2 mb-6">
                   <MessageCircle className="h-5 w-5" />
                   <h3 className="font-semibold">
-                    Comments ({comments.length})
+                    Comments ({countTotalComments(comments)})
                   </h3>
                 </div>
 
                 <div className="space-y-6">
-                  {comments.map((comment) => (
-                    <div key={comment.commentId}>
-                      {renderComment(comment)}
-                      {comment.replies && comment.replies.length > 0 && (
-                        <div className="ml-6 mt-4 space-y-4">
-                          {comment.replies.map((reply) => renderComment(reply))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {comments.length > 0 ? (
+                    comments.map((comment) => (
+                      <CommentItem
+                        key={comment.commentId}
+                        comment={comment}
+                        onReply={handlePostComment}
+                        onReact={handleReact}
+                        onDelete={handleDeleteComment}
+                        currentUser={currentUser}
+                        isReacting={isReacting}
+                      />
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">
+                      No comments yet. Be the first to share your thoughts!
+                    </p>
+                  )}
                 </div>
 
                 <Separator className="my-6" />
 
                 <div className="space-y-4">
+                  <h4 className="font-medium">Add a comment</h4>
                   <textarea
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
@@ -723,7 +1000,7 @@ export default function ArtworkDetail() {
                   />
                   <div className="flex justify-end">
                     <Button
-                      onClick={handlePostComment}
+                      onClick={() => handlePostComment(null, newComment)}
                       disabled={!newComment.trim() || isPosting}
                     >
                       {isPosting ? "Posting..." : "Post Comment"}
@@ -811,18 +1088,16 @@ export default function ArtworkDetail() {
             <Card>
               <CardContent className="p-6">
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm">
-                    <Heart className="h-4 w-4 mr-2" />
-                    Like
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleBookmarkToggle}
+                    disabled={isBookmarkLoading}
+                  >
+                    <Bookmark className={`h-4 w-4 mr-2 ${isBookmarked ? "fill-primary text-primary" : ""}`} />
+                    {isBookmarked ? "Saved" : "Save"}
                   </Button>
-                  <Button variant="outline" size="sm">
-                    <Bookmark className="h-4 w-4 mr-2" />
-                    Save
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Share2 className="h-4 w-4 mr-2" />
-                    Share
-                  </Button>
+                  
                   <Button variant="outline" size="sm" asChild>
                     <a
                       href={mainImage}

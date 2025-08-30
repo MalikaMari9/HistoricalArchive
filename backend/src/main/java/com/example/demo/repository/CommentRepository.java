@@ -3,6 +3,7 @@ package com.example.demo.repository;
 import org.springframework.data.domain.PageRequest;
 import com.example.demo.entity.Comment;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -30,4 +31,11 @@ public interface CommentRepository extends JpaRepository<Comment, Integer> {
  	List<Comment> findByUserArtifact_UserArtifactIdInOrderByCreatedAtDesc(
  	    @Param("userArtifactIds") Collection<Integer> userArtifactIds, 
  	    PageRequest pageRequest);
+    
+    @Query("DELETE FROM Comment c WHERE c.parent.commentId = :parentId")
+    void deleteRepliesByParentId(@Param("parentId") Integer parentId);
+
+    @Modifying
+    @Query("DELETE FROM Comment c WHERE c.commentId = :commentId")
+    void deleteById(@Param("commentId") Integer commentId);
 }

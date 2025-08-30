@@ -12,6 +12,9 @@ import jakarta.servlet.http.HttpSession;
 
 import org.springframework.web.bind.annotation.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 
 import java.util.*;
@@ -45,34 +48,38 @@ public class CuratorDashboardController {
             return ResponseEntity.status(401).build();
         }
 
-        List<Artifact> myArtifacts = artifactRepository.findByUploaded_by(loggedInUser.getUsername());
-        List<String> artifactIds = myArtifacts.stream().map(Artifact::getId).toList();
-        List<UserArtifact> userArtifacts = userArtifactRepository.findByUserIdAndArtifactIdIn(
-                loggedInUser.getUserId(), artifactIds
-        );
-        Map<String, UserArtifact> userArtifactMap = userArtifacts.stream()
-                .collect(Collectors.toMap(UserArtifact::getArtifactId, ua -> ua));
+        Pageable pageable = PageRequest.of(page, size);
+        Page<UserArtifact> userArtifactPage = userArtifactRepository
+                .findByUserIdOrderBySavedAtDesc(loggedInUser.getUserId(), pageable);
 
-        List<CuratorArtworkItem> allItems = new ArrayList<>();
-        for (Artifact artifact : myArtifacts) {
-            UserArtifact ua = userArtifactMap.get(artifact.getId());
-            String status = getStatus(ua);
+        List<String> artifactIds = userArtifactPage.getContent().stream()
+                .map(UserArtifact::getArtifactId)
+                .toList();
+
+        List<Artifact> artifacts = artifactRepository.findAllById(artifactIds);
+
+        // Create a map of artifactId -> Artifact
+        Map<String, Artifact> artifactMap = artifacts.stream()
+                .collect(Collectors.toMap(Artifact::getId, a -> a));
+
+        List<CuratorArtworkItem> items = new ArrayList<>();
+        for (UserArtifact ua : userArtifactPage) {
+            Artifact artifact = artifactMap.get(ua.getArtifactId());
+            if (artifact == null) continue; // skip if missing in MongoDB
 
             CuratorArtworkItem dto = new CuratorArtworkItem();
             dto.setId(artifact.getId());
             dto.setTitle(artifact.getTitle());
-            dto.setStatus(status);
-            dto.setSubmissionDate(artifact.getUploaded_at() != null ? artifact.getUploaded_at().toString() : "");
-            allItems.add(dto);
+            dto.setStatus(ua.getStatus().name().toLowerCase());
+            dto.setSubmissionDate(artifact.getUploaded_at() != null
+                    ? artifact.getUploaded_at().toString()
+                    : "");
+            items.add(dto);
         }
 
-        int start = page * size;
-        int end = Math.min(start + size, allItems.size());
-        List<CuratorArtworkItem> paginatedItems = start >= allItems.size() ? List.of() : allItems.subList(start, end);
-
         Map<String, Object> response = new HashMap<>();
-        response.put("items", paginatedItems);
-        response.put("total", allItems.size());
+        response.put("items", items);
+        response.put("total", userArtifactPage.getTotalElements()); // ← FIX: total count!
         response.put("page", page);
         response.put("size", size);
 

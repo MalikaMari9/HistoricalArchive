@@ -26,7 +26,7 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 
 	List<UserArtifact> findByUserId(Integer userId);
 	
-	Optional<UserArtifact> findByArtifactId(String artifactId);
+	
 	
 	 Optional<UserArtifact> findTopByArtifactIdAndUserIdOrderBySavedAtDesc(String artifactId, Integer userId);
 	List<UserArtifact> findByStatus(ApplicationStatus status);
@@ -51,10 +51,20 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 
 	 List<UserArtifact> findByStatusInOrderBySavedAtDesc(List<ApplicationStatus> of, Pageable pageable);
 
+	 @Query("SELECT ua.status FROM UserArtifact ua WHERE ua.artifactId = :artifactId AND ua.userId = :userId")
+	    Optional<ApplicationStatus> findStatusByArtifactIdAndUserId(@Param("artifactId") String artifactId, 
+	                                                               @Param("userId") Integer userId);
+
+	    @Query("SELECT ua FROM UserArtifact ua WHERE ua.artifactId = :artifactId AND ua.userId = :userId")
+	    Optional<UserArtifact> findUserArtifactByArtifactIdAndUserId(@Param("artifactId") String artifactId, 
+	                                                                @Param("userId") Integer userId);
+	    List<UserArtifact> findByArtifactId(String artifactId);
 	    @Query("SELECT ua FROM UserArtifact ua WHERE ua.status IN :statuses ORDER BY ua.savedAt DESC")
 	    List<UserArtifact> findTopNByStatuses(@Param("statuses") List<ApplicationStatus> statuses, Pageable pageable);
-
-
+	    
+	    Page<UserArtifact> findByUserIdOrderBySavedAtDesc(Integer userId, Pageable pageable);
+	    long countByUserId(Integer userId);
+	 
 }
 
 

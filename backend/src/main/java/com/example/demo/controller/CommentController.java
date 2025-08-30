@@ -47,26 +47,13 @@ public class CommentController {
             HttpSession session) {
         try {
             User user = (User) session.getAttribute("loggedInUser");
-            
-            // Get top-level comments
+
             List<Comment> topLevelComments = commentRepository.findByUserArtifact_ArtifactIdOrderByCreatedAtDesc(artifactId);
-            
-            // Convert to DTO format with nested replies
+
             List<Map<String, Object>> commentsWithReplies = topLevelComments.stream()
-                .map(comment -> {
-                    Map<String, Object> commentMap = createCommentMap(comment, user);
-                    
-                    // Get replies for this comment
-                    List<Comment> replies = commentRepository.findRepliesByParentId(comment.getCommentId());
-                    List<Map<String, Object>> replyDTOs = replies.stream()
-                        .map(reply -> createCommentMap(reply, user))
-                        .collect(Collectors.toList());
-                    
-                    commentMap.put("replies", replyDTOs);
-                    return commentMap;
-                })
-                .collect(Collectors.toList());
-            
+                    .map(comment -> createCommentMapRecursive(comment, user)) // 👈 recursive
+                    .collect(Collectors.toList());
+
             return ResponseEntity.ok(commentsWithReplies);
         } catch (Exception e) {
             logger.error("Failed to fetch comments", e);
@@ -74,6 +61,19 @@ public class CommentController {
                     .body(Map.of("error", "Failed to fetch comments"));
         }
     }
+
+    private Map<String, Object> createCommentMapRecursive(Comment comment, User currentUser) {
+        Map<String, Object> map = createCommentMap(comment, currentUser);
+
+        List<Comment> replies = commentRepository.findRepliesByParentId(comment.getCommentId());
+        List<Map<String, Object>> replyDTOs = replies.stream()
+                .map(reply -> createCommentMapRecursive(reply, currentUser)) // 👈 recursion
+                .collect(Collectors.toList());
+
+        map.put("replies", replyDTOs);
+        return map;
+    }
+
 
     private Map<String, Object> createCommentMap(Comment comment, User currentUser) {
         Map<String, Object> commentMap = new HashMap<>();
@@ -300,6 +300,55 @@ public class CommentController {
             logger.error("Failed to fetch recent comments for curator", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to fetch recent comments"));
+        }
+    }
+    
+    @DeleteMapping("/{commentId}")
+    public ResponseEntity<?> deleteComment(
+            @PathVariable Integer commentId,
+            HttpSession session) {
+        
+        try {
+            // Validate session and user
+            User user = (User) session.getAttribute("loggedInUser");
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Authentication required"));
+            }
+
+            // Find the comment
+            Optional<Comment> commentOpt = commentRepository.findById(commentId);
+            if (commentOpt.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Comment not found"));
+            }
+
+            Comment comment = commentOpt.get();
+
+            // Check if user owns the comment
+            if (!comment.getUserId().equals(user.getUserId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "You can only delete your own comments"));
+            }
+
+            // Check if comment has replies - if so, soft delete by clearing content
+            List<Comment> replies = commentRepository.findRepliesByParentId(commentId);
+            if (!replies.isEmpty()) {
+                // Soft delete: mark as deleted but keep the structure
+                comment.setComment("[deleted]");
+                comment.setUser(null); // Remove user reference for deleted comments
+                commentRepository.save(comment);
+            } else {
+                // Hard delete if no replies
+                commentRepository.delete(comment);
+            }
+
+            return ResponseEntity.ok(Map.of("success", true, "message", "Comment deleted successfully"));
+
+        } catch (Exception e) {
+            logger.error("Failed to delete comment", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to delete comment"));
         }
     }
 }

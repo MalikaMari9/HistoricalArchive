@@ -684,6 +684,71 @@ export const getArtifactById = async (
   return res.data;
 };
 
+export interface UserArtifactDTO {
+  userArtifactId?: number;
+  artifactId: string;
+  userId: number;
+  savedAt?: string;
+  status: string;
+  reason?: string;
+  professorId?: number;
+}
+
+export interface StatusUpdateRequest {
+  status: string;
+  reason?: string;
+  professorId?: number;
+}
+
+// Add these API functions
+export const getUserArtifactStatus = async (artifactId: string, userId: number): Promise<string> => {
+  const response = await axios.get(`/api/user-artifacts/status`, {
+    params: { artifactId, userId }
+  });
+  return response.data;
+};
+
+export const getUserArtifact = async (artifactId: string, userId: number): Promise<UserArtifactDTO> => {
+  const response = await axios.get(`/api/user-artifacts`, {
+    params: { artifactId, userId }
+  });
+  return response.data;
+};
+
+export const createUserArtifact = async (userArtifactDTO: UserArtifactDTO): Promise<UserArtifactDTO> => {
+  const response = await axios.post(`/api/user-artifacts`, userArtifactDTO);
+  return response.data;
+};
+
+export const updateArtifactStatus = async (
+  userArtifactId: number, 
+  statusUpdate: StatusUpdateRequest
+): Promise<UserArtifactDTO> => {
+  const response = await axios.put(`/api/user-artifacts/${userArtifactId}/status`, null, {
+    params: statusUpdate
+  });
+  return response.data;
+};
+
+export const deleteUserArtifact = async (userArtifactId: number): Promise<void> => {
+  await axios.delete(`/api/user-artifacts/${userArtifactId}`);
+};
+
+
+export const checkIfArtifactSaved = async (artifactId: string, userId: number): Promise<boolean> => {
+  const response = await axios.get(`/api/user-artifacts/exists`, {
+    params: { artifactId, userId }
+  });
+  return response.data;
+};
+
+// Add this function to get artifact status for any user
+export const getArtifactStatus = async (artifactId: string): Promise<UserArtifactDTO[]> => {
+  const response = await axios.get(`/api/user-artifacts/artifact/${artifactId}`);
+  return response.data;
+};
+
+
 /* --------------------------------- Ratings -------------------------------- */
 
 export interface RatingDTO {
@@ -810,6 +875,11 @@ export const reactToComment = async (payload: {
   return res.data;
 };
 
+export const deleteComment = async (commentId: number): Promise<{ success: boolean; message?: string }> => {
+  const res = await api.delete(`/comments/${commentId}`);
+  return res.data;
+};
+
 /* -------------------------------------------------------------------------- */
 /*                                UPLOAD SESSION                              */
 /* -------------------------------------------------------------------------- */
@@ -897,16 +967,31 @@ export interface ArtifactUpdatePayload {
 /** List the current user's uploaded artworks (curator) */
 export const listMyArtworks = async (
   page = 0,
-  size = 25
+  size = 25,
+  search?: string,
+  status?: string
 ): Promise<PageResponse<MyArtworkDTO>> => {
-  const res = await api.get<PageResponse<MyArtworkDTO>>(
-    "/artifacts/my-artworks",
-    {
-      params: { page, size },
-    }
-  );
+  const res = await api.get<PageResponse<MyArtworkDTO>>("/artifacts/my-artworks", {
+    params: {
+      page,
+      size,
+      search: search?.trim() || undefined,
+      status: status === 'all' ? undefined : status,
+    },
+  });
   return res.data;
 };
+
+export const getMyArtworkStats = async (): Promise<{
+  total: number;
+  accepted: number;
+  pending: number;
+  rejected: number;
+}> => {
+  const res = await api.get("/artifacts/my-artworks/stats");
+  return res.data;
+};
+
 
 /** Delete a (your) single artwork by id */
 export const deleteArtifact = async (id: string): Promise<void> => {

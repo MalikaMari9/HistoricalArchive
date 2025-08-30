@@ -8,6 +8,8 @@ import com.example.demo.repository.BookmarkRepository;
 import com.example.demo.repository.UserArtifactRepository;
 import com.example.demo.repository.UserRepository;
 import jakarta.servlet.http.HttpSession;
+import jakarta.transaction.Transactional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -88,7 +90,8 @@ public class BookmarkController {
         
         return ResponseEntity.ok(dto);
     }
-
+    
+    @Transactional
     @DeleteMapping
     public ResponseEntity<Void> removeBookmark(@RequestParam String artifactId, HttpSession session) {
         User user = (User) session.getAttribute("loggedInUser");
