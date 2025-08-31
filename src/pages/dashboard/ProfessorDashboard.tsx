@@ -8,38 +8,39 @@ import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   professorListPendingArtworks,
   professorListRecentDecisions,
-  professorGetStats,
+  professorFullReviewStats,
   professorListPendingCurators,
   professorListPendingArtifacts,
+  // types
+  FullProfessorReviewStats,
   ProfessorPendingArtwork,
-  ProfessorStats,
   ProfessorPendingCurator,
   ProfessorPendingArtifact,
 } from "@/services/api";
 import axios, { AxiosError } from "axios";
 
-/* ----------------------------- types ----------------------------- */
+/* ---------- local view models ---------- */
 type PendingArtworkVM = {
   id: number;
   title: string;
   curator: string;
   category: string;
-  submittedDate: string; // formatted
+  submittedDate: string;
   priority: "high" | "medium" | "low";
 };
 
 type RecentDecisionVM = {
   type: "artifact" | "curator";
-  title: string;       // artifact title or curator full name
+  title: string;
   decision: "accepted" | "rejected";
-  curator: string;     // curator's username
-  dateIso: string;     // raw ISO from server
-  relative: string;    // "x minutes ago"
+  curator: string;
+  dateIso: string;
+  relative: string;
 };
 
 type PendingCuratorVM = ProfessorPendingCurator & {
-  dob: string;         // formatted
-  submittedAt: string; // formatted
+  dob: string;
+  submittedAt: string;
 };
 
 type PendingArtifactVM = {
@@ -47,17 +48,17 @@ type PendingArtifactVM = {
   title: string;
   category: string;
   uploaded_by: string;
-  uploaded_at: string; // formatted
+  uploaded_at: string;
 };
 
-/* --------------------------- component --------------------------- */
 export default function ProfessorDashboard() {
   const navigate = useNavigate();
   const { user, ready } = useAuthGuard();
 
+  // page state
   const [pendingArtworks, setPendingArtworks] = useState<PendingArtworkVM[]>([]);
   const [recentDecisions, setRecentDecisions] = useState<RecentDecisionVM[]>([]);
-  const [stats, setStats] = useState<ProfessorStats>({ pending: 0, accepted: 0, rejected: 0, total: 0 });
+  const [stats, setStats] = useState<FullProfessorReviewStats | null>(null);
   const [pendingCurators, setPendingCurators] = useState<PendingCuratorVM[]>([]);
   const [pendingArtifacts, setPendingArtifacts] = useState<PendingArtifactVM[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,12 +69,13 @@ export default function ProfessorDashboard() {
   const recentPageSize = 5;
   const [recentTotal, setRecentTotal] = useState(0);
 
+  // stable date formatter
   const dateFmt = useMemo(
     () => new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }),
     []
   );
 
-  /* ------------------------- auth guard sync ------------------------- */
+  /* ---------- auth/role guard ---------- */
   useEffect(() => {
     if (!ready) return;
     if (!user) {
@@ -83,19 +85,18 @@ export default function ProfessorDashboard() {
     }
   }, [ready, user, navigate]);
 
-  /* ------------ load static dashboard boxes (not paginated) ---------- */
+  /* ---------- load static boxes (pending lists + full stats) ---------- */
   useEffect(() => {
     if (!ready) return;
-    const controller = new AbortController();
 
     (async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const [artworksRes, dashStats, curatorsRes, artifactsRes] = await Promise.all([
+        const [artworksRes, fullStats, curatorsRes, artifactsRes] = await Promise.all([
           professorListPendingArtworks(),
-          professorGetStats(),
+          professorFullReviewStats(),
           professorListPendingCurators(),
           professorListPendingArtifacts(),
         ]);
@@ -129,7 +130,7 @@ export default function ProfessorDashboard() {
           }))
         );
 
-        setStats(dashStats);
+        setStats(fullStats);
       } catch (e) {
         const ax = e as AxiosError;
         if (axios.isAxiosError(ax) && ax.response && (ax.response.status === 401 || ax.response.status === 403)) {
@@ -141,30 +142,25 @@ export default function ProfessorDashboard() {
         setLoading(false);
       }
     })();
-
-    return () => controller.abort();
   }, [ready, dateFmt, navigate]);
 
-  /* ------------------ load paginated recent decisions ----------------- */
+  /* ---------- load paginated "recent decisions" ---------- */
   useEffect(() => {
     if (!ready) return;
-    const controller = new AbortController();
 
     (async () => {
       try {
-        // keep page changes snappy without blocking other boxes
         setError(null);
 
         const decisionsRes = await professorListRecentDecisions(recentPage, recentPageSize);
         const { items, total } = decisionsRes as { items: any[]; total: number };
-
         setRecentTotal(total);
 
         setRecentDecisions(
           items.map<RecentDecisionVM>((d: any) => ({
             type: d.type,
             title: d.title,
-            decision: (d.decision?.toLowerCase() as RecentDecisionVM["decision"]),
+            decision: d.decision?.toLowerCase() as RecentDecisionVM["decision"],
             curator: d.curator,
             dateIso: d.date,
             relative: timeAgo(d.date),
@@ -179,11 +175,25 @@ export default function ProfessorDashboard() {
         setError(e instanceof Error ? e.message : "Failed to load recent decisions");
       }
     })();
-
-    return () => controller.abort();
   }, [ready, recentPage, navigate]);
 
-  /* ------------------------------ UI states ------------------------------ */
+  /* ---------- derive presentation data (NO hooks below this line) ---------- */
+  // Fallback keeps rendering stable while stats is null
+  const safeStats: FullProfessorReviewStats =
+    stats ?? {
+      artifact: { pending: 0, accepted: 0, rejected: 0, total: 0 },
+      curator: { pending: 0, accepted: 0, rejected: 0, total: 0 },
+    };
+
+  // Simple sums (no need for useMemo, keeps hook order simple)
+  const combinedPending = safeStats.artifact.pending + safeStats.curator.pending;
+  const combinedAccepted = safeStats.artifact.accepted + safeStats.curator.accepted;
+  const combinedRejected = safeStats.artifact.rejected + safeStats.curator.rejected;
+  const combinedTotal = safeStats.artifact.total + safeStats.curator.total;
+
+  const totalPages = Math.max(1, Math.ceil(recentTotal / recentPageSize));
+
+  /* ---------- loading & error UIs (after all hooks/constants) ---------- */
   if (!ready || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -210,9 +220,7 @@ export default function ProfessorDashboard() {
     );
   }
 
-  /* -------------------------------- render ------------------------------- */
-  const totalPages = Math.max(1, Math.ceil(recentTotal / recentPageSize));
-
+  /* ---------- render ---------- */
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-surface/50 to-background p-6">
       <div className="max-w-7xl mx-auto">
@@ -224,7 +232,7 @@ export default function ProfessorDashboard() {
           </p>
         </div>
 
-        {/* Stats Overview */}
+        {/* Stats Overview (artifact + curator merged) */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -232,7 +240,10 @@ export default function ProfessorDashboard() {
               <Clock className="h-4 w-4 text-yellow-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+              <div className="text-2xl font-bold text-yellow-600">{combinedPending}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {safeStats.artifact.pending} artifacts + {safeStats.curator.pending} curators
+              </div>
             </CardContent>
           </Card>
 
@@ -242,7 +253,10 @@ export default function ProfessorDashboard() {
               <CheckCircle className="h-4 w-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.accepted}</div>
+              <div className="text-2xl font-bold text-green-600">{combinedAccepted}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {safeStats.artifact.accepted} artifacts + {safeStats.curator.accepted} curators
+              </div>
             </CardContent>
           </Card>
 
@@ -252,7 +266,10 @@ export default function ProfessorDashboard() {
               <XCircle className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
+              <div className="text-2xl font-bold text-red-600">{combinedRejected}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {safeStats.artifact.rejected} artifacts + {safeStats.curator.rejected} curators
+              </div>
             </CardContent>
           </Card>
 
@@ -262,7 +279,10 @@ export default function ProfessorDashboard() {
               <Eye className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">{stats.total}</div>
+              <div className="text-2xl font-bold text-primary">{combinedTotal}</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {safeStats.artifact.total} artifacts + {safeStats.curator.total} curators
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -420,7 +440,7 @@ export default function ProfessorDashboard() {
   );
 }
 
-/* ----------------------------- helpers ----------------------------- */
+/* ---------- helpers ---------- */
 function timeAgo(dateString?: string): string {
   if (!dateString) return "";
   const now = Date.now();

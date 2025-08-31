@@ -49,8 +49,9 @@ import AdminDashboard from "./pages/dashboard/AdminDashboard";
 import ProfessorDashboard from "./pages/dashboard/ProfessorDashboard";
 import CuratorApplications from "./pages/professor/CuratorApplication";
 import { ReviewArts as ProfessorReviewArts } from "./pages/professor/ReviewArts";
+import ProfessorAudit from "@/pages/professor/ProfessorAudit";
 
-//import ReviewCurator from "./pages/professor/ReviewCurator";
+
 
 // --- Pages: Artifact ---
 import { AuthProvider } from "@/hooks/useAuth";
@@ -144,6 +145,10 @@ const App = () => (
                 path="/professor/curators/review/:id"
                 element={<CuratorApplications />}
               />
+
+              <Route path="recent-decisions" element={<ProfessorAudit />} />
+
+            {/*} <Route path="recent-decisions" element={<ProfessorAudit />} /> */}
             </Route>
 
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

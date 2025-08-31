@@ -64,7 +64,23 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 	    
 	    Page<UserArtifact> findByUserIdOrderBySavedAtDesc(Integer userId, Pageable pageable);
 	    long countByUserId(Integer userId);
-	 
+
+		long countByStatusAndProfessorId(ApplicationStatus accepted, Integer userId);
+	    
+		@Query("SELECT ua FROM UserArtifact ua WHERE ua.status IN :statuses AND ua.professorId = :professorId ORDER BY ua.savedAt DESC")
+		Page<UserArtifact> findTopNByStatusesAndProfessorId(@Param("statuses") List<ApplicationStatus> statuses,
+		                                                    @Param("professorId") Integer professorId,
+		                                                    Pageable pageable);
+
+		Page<UserArtifact> findByStatusAndProfessorIdOrderBySavedAtDesc(ApplicationStatus status, Integer userId,
+				Pageable pageable);
+
+		List<UserArtifact> findByStatusOrderBySavedAtDesc(ApplicationStatus status);
+
+		List<UserArtifact> findByStatusAndProfessorIdOrderBySavedAtDesc(ApplicationStatus status, Integer userId);
+
+		List<UserArtifact> findAllByOrderBySavedAtDesc();
+
 }
 
 

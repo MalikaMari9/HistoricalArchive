@@ -8,7 +8,7 @@ public class ReviewDecisionDTO {
     private String decision;     // "approved" or "rejected"
     private String curator;      // curator username
     private LocalDateTime date;  // decision date
-
+    private String status;
     public ReviewDecisionDTO(String type, String title, String decision, String curator, LocalDateTime date) {
         this.type = type;
         this.title = title;
@@ -16,6 +16,17 @@ public class ReviewDecisionDTO {
         this.curator = curator;
         this.date = date;
     }
+
+    
+	public String getStatus() {
+		return status;
+	}
+
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+
 
 	public String getType() {
 		return type;

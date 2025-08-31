@@ -1,6 +1,17 @@
 // src/pages/professor/ReviewArtifact.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle, X, Clock, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle,
+  X,
+  XCircle,
+  Clock,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+   MoreVertical,  
+} from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   AppStatus,
@@ -56,13 +68,10 @@ function getStatusBadge(status: Status) {
 
 // Normalize any image shape your backend may return.
 function normalizeImages(art: ReviewArtifactDto): string[] {
-  // Prefer "images" array with baseimageurl/image_url-like fields
   const fromArray =
     (art.images ?? [])
       .map((im) => (im as any)?.baseimageurl || (im as any)?.image_url || (im as any)?.url)
       .filter(Boolean) as string[];
-
-  // Fallback to single image_url on root (some endpoints use this)
   const single = (art as any).image_url as string | undefined;
 
   const out = [...fromArray];
@@ -138,7 +147,7 @@ function ImgWithFallback({
 
 export function ReviewArts() {
   const navigate = useNavigate();
-  const {user, ready} = useAuthGuard();
+  const { user, ready } = useAuthGuard();
 
   // deep-link params
   const [searchParams] = useSearchParams();
@@ -151,6 +160,14 @@ export function ReviewArts() {
     ["pending", "accepted", "rejected"].includes(statusFromUrl) ? statusFromUrl : "pending"
   );
   const [highlightId, setHighlightId] = useState<number | null>(null);
+
+  // search + debounce
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 500);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   // pagination + data per tab
   const [pageByStatus, setPageByStatus] = useState<Record<Status, number>>({
@@ -174,6 +191,14 @@ export function ReviewArts() {
     rejected: false,
   });
 
+  // top summary cards counts (global)
+  const [counts, setCounts] = useState<{ pending: number; accepted: number; rejected: number; total: number }>({
+    pending: 0,
+    accepted: 0,
+    rejected: 0,
+    total: 0,
+  });
+
   // selection/dialogs
   const [selected, setSelected] = useState<ReviewArtifactDto | null>(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
@@ -184,19 +209,15 @@ export function ReviewArts() {
   // abort controllers to avoid race conditions
   const aborters = useRef<Record<string, AbortController | null>>({});
 
-useEffect(() => {
-  if (!ready) return;
-
-  if (!user) {
-    // session expired or not logged in at all
-    navigate("/signin", { replace: true });
-  } else if (user.role !== "professor") {
-    // logged in, but not a professor
-    navigate("/403", { replace: true });
-  }
-}, [ready, user, navigate]);
-
-
+  // auth gate
+  useEffect(() => {
+    if (!ready) return;
+    if (!user) {
+      navigate("/signin", { replace: true });
+    } else if (user.role !== "professor") {
+      navigate("/403", { replace: true });
+    }
+  }, [ready, user, navigate]);
 
   // one-time flash style
   useEffect(() => {
@@ -217,21 +238,36 @@ useEffect(() => {
 
   /* ------------------------------- Data loads ------------------------------- */
 
+  // global counts for summary cards
   const loadCounts = async () => {
     try {
-      const counts = await professorReviewArtifactCounts();
+      const c = await professorReviewArtifactCounts();
+      setCounts({
+        pending: c?.pending ?? 0,
+        accepted: c?.accepted ?? 0,
+        rejected: c?.rejected ?? 0,
+        total: c?.total ?? (c?.accepted ?? 0) + (c?.rejected ?? 0),
+      });
+      // keep tab totals in sync initially; they’ll be overwritten by paged fetches (which include search filtering)
       setTotalByStatus({
-        pending: counts.pending ?? 0,
-        accepted: counts.accepted ?? 0,
-        rejected: counts.rejected ?? 0,
+        pending: c?.pending ?? 0,
+        accepted: c?.accepted ?? 0,
+        rejected: c?.rejected ?? 0,
       });
     } catch (e) {
       console.error(e);
     }
   };
 
+  const refreshAllTabs = async () => {
+  await loadCounts();
+  await loadPage("pending", pageByStatus["pending"]);
+  await loadPage("accepted", pageByStatus["accepted"]);
+  await loadPage("rejected", pageByStatus["rejected"]);
+};
+
+
   const loadPage = async (status: Status, page = 0, opts?: { afterRenderScrollToId?: number }) => {
-    // cancel inflight for this status
     const key = `page-${status}`;
     aborters.current[key]?.abort();
     const ac = new AbortController();
@@ -239,7 +275,14 @@ useEffect(() => {
 
     setLoadingByStatus((p) => ({ ...p, [status]: true }));
     try {
-      const { content, total } = await professorListReviewArtifacts(status, page, PAGE_SIZE, { signal: ac.signal });
+      const { content, total } = await professorListReviewArtifacts(
+        status,
+        page,
+        PAGE_SIZE,
+        // IMPORTANT: ensure your API client forwards `q` to the backend
+        { signal: ac.signal, q: debouncedSearch || undefined } as any
+      );
+
       setRowsByStatus((p) => ({ ...p, [status]: content }));
       setTotalByStatus((p) => ({ ...p, [status]: total }));
       setPageByStatus((p) => ({ ...p, [status]: page }));
@@ -254,15 +297,16 @@ useEffect(() => {
           }
         });
       }
-    } catch (e) {
-      if ((e as any)?.name !== "CanceledError") console.error(e);
+    } catch (e: any) {
+      if (e?.name !== "CanceledError") console.error(e);
     } finally {
       setLoadingByStatus((p) => ({ ...p, [status]: false }));
     }
   };
 
-  // initial: load counts + initial tab page (respect deep link)
+  // initial: load counts + first page
   useEffect(() => {
+    if (!ready) return;
     loadCounts();
     if (focusId) {
       loadPage(activeTab, 0, { afterRenderScrollToId: focusId });
@@ -270,15 +314,24 @@ useEffect(() => {
       loadPage(activeTab, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready]);
 
-  // when switching tabs, fetch if empty
+  // when switching tabs, fetch if empty (or refresh if you prefer)
   useEffect(() => {
+    if (!ready) return;
     if (rowsByStatus[activeTab].length === 0 && !loadingByStatus[activeTab]) {
       loadPage(activeTab, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, ready]);
+
+  // when search changes, reset current tab to page 0 and fetch
+  useEffect(() => {
+    if (!ready) return;
+    setPageByStatus((p) => ({ ...p, [activeTab]: 0 }));
+    loadPage(activeTab, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, ready]);
 
   /* ---------------------------- Action handlers ---------------------------- */
 
@@ -286,9 +339,9 @@ useEffect(() => {
     try {
       await professorAcceptArtifact(submissionId);
       setSelected(null);
-      // reload current tab page
-      await loadPage(activeTab, pageByStatus[activeTab]);
-      await loadCounts();
+      //await loadPage(activeTab, pageByStatus[activeTab]);
+      //await loadCounts();
+      await refreshAllTabs();
     } catch (e) {
       console.error(e);
     }
@@ -306,8 +359,9 @@ useEffect(() => {
       const lastPage = Math.max(0, Math.ceil(newTotal / PAGE_SIZE) - 1);
       const target = Math.min(pageByStatus[activeTab], lastPage);
 
-      await loadPage(activeTab, target);
-      await loadCounts();
+      //await loadPage(activeTab, target);
+      //await loadCounts();
+      await refreshAllTabs();
     } catch (e) {
       console.error(e);
     }
@@ -356,18 +410,10 @@ useEffect(() => {
 
   function ArtTable({ status, arts, loading }: { status: Status; arts: ReviewArtifactDto[]; loading: boolean }) {
     if (loading && arts.length === 0) {
-      return (
-        <div className="p-6 text-sm text-muted-foreground">
-          Loading {status} submissions…
-        </div>
-      );
+      return <div className="p-6 text-sm text-muted-foreground">Loading {status} submissions…</div>;
     }
     if (!loading && arts.length === 0) {
-      return (
-        <div className="p-6 text-sm text-muted-foreground">
-          No {status} submissions.
-        </div>
-      );
+      return <div className="p-6 text-sm text-muted-foreground">No {status} submissions.</div>;
     }
 
     return (
@@ -379,6 +425,7 @@ useEffect(() => {
             <TableHead>Category</TableHead>
             <TableHead>Submitted</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Details</TableHead>
             <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -414,7 +461,7 @@ useEffect(() => {
                 <TableCell>{formatDate(art.submittedAt)}</TableCell>
                 <TableCell>{getStatusBadge((art.status as Status) ?? "pending")}</TableCell>
                 <TableCell>
-                  <div className="flex flex-nowrap gap-2">
+                  
                     <Button
                       variant="outline"
                       size="sm"
@@ -427,57 +474,112 @@ useEffect(() => {
                       <Eye className="h-4 w-4 mr-1" />
                       View Details
                     </Button>
+</TableCell><TableCell>
+                   {art.status === "pending" && (
+  <div className="relative inline-flex group">
+    {/* Always-visible kebab button */}
+    <Button variant="ghost" size="icon" className="h-8 w-8">
+      <MoreVertical className="h-4 w-4" />
+      <span className="sr-only">Actions</span>
+    </Button>
 
-                    {art.status === "pending" && (
-                      <>
-                        {/* Accept inline dialog */}
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => setSelected(art)}
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Accept
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Accept Artwork</DialogTitle>
-                            </DialogHeader>
-                            {selected && (
-                              <div className="space-y-4">
-                                <p>
-                                  Are you sure you want to accept “{selected.title}” by {selected.curatorUsername}?
-                                </p>
-                                <div className="flex space-x-2">
-                                  <Button onClick={() => handleApprove(selected.submissionId)} className="flex-1">
-                                    <CheckCircle className="h-4 w-4 mr-2" />
-                                    Confirm Acceptance
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </DialogContent>
-                        </Dialog>
+    {/* Hover-revealed panel */}
+    <div
+      className="
+        absolute right-0 top-0 mt-9 w-44 z-20
+        rounded-md border bg-popover p-2 shadow-md
+        opacity-0 pointer-events-none
+        transition-opacity duration-150
+        group-hover:opacity-100 group-hover:pointer-events-auto
+        group-focus-within:opacity-100 group-focus-within:pointer-events-auto
+      "
+    >
+      {/* Accept (opens confirm dialog) */}
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button
+            size="sm"
+            className="w-full justify-start mb-2"
+            onClick={() => setSelected(art)}
+          >
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Accept
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Accept Artwork</DialogTitle>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-4">
+              <p>
+                Are you sure you want to accept “{selected.title}” by {selected.curatorUsername}?
+              </p>
+              <div className="flex space-x-2">
+                <Button onClick={() => handleApprove(selected.submissionId)} className="flex-1">
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Confirm Acceptance
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
-                        {/* Reject uses a global dialog to avoid unmount issues */}
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            setSelected(art);
-                            setRejectReason("");
-                            setIsRejectOpen(true);
-                          }}
-                        >
-                          <X className="h-4 w-4 mr-1" />
-                          Reject
-                        </Button>
-                      </>
-                    )}
-                  </div>
+      {/* Reject (opens existing global reject dialog) */}
+      <Button
+        variant="destructive"
+        size="sm"
+        className="w-full justify-start"
+        onClick={() => {
+          setSelected(art);
+          setRejectReason("");
+          setIsRejectOpen(true);
+        }}
+      >
+        <X className="h-4 w-4 mr-2" />
+        Reject
+      </Button>
+    </div>
+  </div>
+)}
+{art.status === "accepted" && (
+  <div className="relative inline-flex group">
+    {/* Always-visible kebab button */}
+    <Button variant="ghost" size="icon" className="h-8 w-8">
+      <MoreVertical className="h-4 w-4" />
+      <span className="sr-only">Actions</span>
+    </Button>
+
+    {/* Hover-revealed panel */}
+    <div
+      className="
+        absolute right-0 top-0 mt-9 w-44 z-20
+        rounded-md border bg-popover p-2 shadow-md
+        opacity-0 pointer-events-none
+        transition-opacity duration-150
+        group-hover:opacity-100 group-hover:pointer-events-auto
+        group-focus-within:opacity-100 group-focus-within:pointer-events-auto
+      "
+    >
+      {/* Revoke (reuses existing global reject dialog) */}
+      <Button
+        variant="destructive"
+        size="sm"
+        className="w-full justify-start"
+        onClick={() => {
+          setSelected(art);
+          setRejectReason("");
+          setIsRejectOpen(true);
+        }}
+      >
+        <X className="h-4 w-4 mr-2" />
+        Revoke 
+      </Button>
+    </div>
+  </div>
+)}
+
                 </TableCell>
               </TableRow>
             );
@@ -511,10 +613,65 @@ useEffect(() => {
           <h1 className="text-3xl font-bold text-foreground">Review Art Submissions</h1>
         </div>
 
+        {/* Stats Overview (artifacts) */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Review</CardTitle>
+              <Clock className="h-4 w-4 text-yellow-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">{counts.pending}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Accepted</CardTitle>
+              <CheckCircle className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{counts.accepted}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Rejected</CardTitle>
+              <XCircle className="h-4 w-4 text-red-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{counts.rejected}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Reviewed</CardTitle>
+              <Eye className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-primary">{counts.total}</div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Art Submissions</CardTitle>
+
+            {/* Search bar */}
+            <div className="mt-3 w-full md:w-96 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                placeholder="Search by title, category, tags…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
           </CardHeader>
+
           <CardContent>
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Status)} className="w-full">
               <TabsList className="grid w-full grid-cols-3">
@@ -524,29 +681,17 @@ useEffect(() => {
               </TabsList>
 
               <TabsContent value="pending" className="mt-6">
-                <ArtTable
-                  status="pending"
-                  arts={rowsByStatus.pending}
-                  loading={loadingByStatus.pending}
-                />
+                <ArtTable status="pending" arts={rowsByStatus.pending} loading={loadingByStatus.pending} />
                 <Pagination status="pending" />
               </TabsContent>
 
               <TabsContent value="accepted" className="mt-6">
-                <ArtTable
-                  status="accepted"
-                  arts={rowsByStatus.accepted}
-                  loading={loadingByStatus.accepted}
-                />
+                <ArtTable status="accepted" arts={rowsByStatus.accepted} loading={loadingByStatus.accepted} />
                 <Pagination status="accepted" />
               </TabsContent>
 
               <TabsContent value="rejected" className="mt-6">
-                <ArtTable
-                  status="rejected"
-                  arts={rowsByStatus.rejected}
-                  loading={loadingByStatus.rejected}
-                />
+                <ArtTable status="rejected" arts={rowsByStatus.rejected} loading={loadingByStatus.rejected} />
                 <Pagination status="rejected" />
               </TabsContent>
             </Tabs>
@@ -593,132 +738,147 @@ useEffect(() => {
 
         {/* View Details dialog */}
         <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-6xl max-h-[85vh] overflow-y-auto">
+
             <DialogHeader>
               <DialogTitle>Artwork Details</DialogTitle>
             </DialogHeader>
 
-            {selected && (
-              <div className="space-y-6">
-                {/* Images */}
-                <div className="space-y-4">
-                  <h4 className="font-semibold">Artwork Images</h4>
-                  <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-                    <ImgWithFallback
-                      src={normalizeImages(selected)[selectedImageIndex || 0]}
-                      alt={selected.title}
-                      className="w-full h-full object-cover cursor-pointer"
-                      onClick={() =>
-                        window.open(normalizeImages(selected)[selectedImageIndex || 0], "_blank")
-                      }
-                    />
-                  </div>
-                  {normalizeImages(selected).length > 1 && (
-                    <div className="grid grid-cols-4 gap-2">
-                      {normalizeImages(selected).map((image, idx) => (
-                        <div
-                          key={idx}
-                          className={`cursor-pointer group relative overflow-hidden rounded border-2 transition-all duration-300 ${
-                            (selectedImageIndex || 0) === idx
-                              ? "border-primary shadow-lg"
-                              : "border-transparent hover:border-muted-foreground/30"
-                          }`}
-                          onClick={() => setSelectedImageIndex(idx)}
-                        >
-                          <ImgWithFallback
-                            src={image}
-                            alt={`${selected.title} view ${idx + 1}`}
-                            className="w-full h-20 object-cover transition-transform duration-300 group-hover:scale-105"
-                          />
-                          {(selectedImageIndex || 0) === idx && (
-                            <div className="absolute inset-0 bg-primary/10 pointer-events-none" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+{selected && (
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {/* LEFT: Image panel */}
+    <div className="space-y-4 md:sticky md:top-0 self-start">
+      <h4 className="font-semibold">Artwork Images</h4>
 
-                {/* Basic Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Title</label>
-                      <p className="text-lg font-semibold">{selected.title}</p>
-                    </div>
-                    {selected.description && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Description</label>
-                        <p className="text-sm">{selected.description}</p>
-                      </div>
-                    )}
-                    {selected.dimension && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Dimension</label>
-                        <p className="text-sm">{selected.dimension}</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Category</label>
-                      <p className="text-sm">{selected.category}</p>
-                    </div>
-                    {!!(selected.tags && selected.tags.length) && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Tags</label>
-                        <p className="text-sm">{selected.tags.join(", ")}</p>
-                      </div>
-                    )}
-                  </div>
+      <div className="w-full rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+        <ImgWithFallback
+          src={normalizeImages(selected)[selectedImageIndex || 0]}
+          alt={selected.title}
+          className="max-h-[70vh] max-w-full w-auto h-auto object-contain cursor-zoom-in"
+          onClick={() =>
+            window.open(normalizeImages(selected)[selectedImageIndex || 0], "_blank")
+          }
+        />
+      </div>
 
-                  <div className="space-y-4">
-                    {selected.culture && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Culture</label>
-                        <p className="text-sm">{selected.culture}</p>
-                      </div>
-                    )}
-                    {selected.department && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Department</label>
-                        <p className="text-sm">{selected.department}</p>
-                      </div>
-                    )}
-                    {selected.period && (
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">Period</label>
-                        <p className="text-sm">{selected.period}</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Exact Found Date</label>
-                      <p className="text-sm">{selected.exact_found_date || ""}</p>
-                    </div>
-                    <LocationBlock loc={selected.location} />
-                  </div>
-                </div>
+      {normalizeImages(selected).length > 1 && (
+        <div className="grid grid-cols-5 gap-2">
+          {normalizeImages(selected).map((image, idx) => (
+            <div
+              key={idx}
+              className={`cursor-pointer group relative overflow-hidden rounded border-2 transition-all duration-300 ${
+                (selectedImageIndex || 0) === idx
+                  ? "border-primary shadow-lg"
+                  : "border-transparent hover:border-muted-foreground/30"
+              }`}
+              onClick={() => setSelectedImageIndex(idx)}
+            >
+              <ImgWithFallback
+                src={image}
+                alt={`${selected.title} view ${idx + 1}`}
+                className="w-full h-20 object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+              {(selectedImageIndex || 0) === idx && (
+                <div className="absolute inset-0 bg-primary/10 pointer-events-none" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
 
-                {/* Submission Info */}
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-4">Submission Information</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Curator</label>
-                      <p>{selected.curatorUsername}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Submitted Date</label>
-                      <p>{formatDate(selected.submittedAt)}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Status</label>
-                      <div className="mt-1">
-                        {getStatusBadge((selected.status as Status) ?? "pending")}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+    {/* RIGHT: Metadata panel */}
+    <div className="space-y-6">
+      {/* Basic Info (kept as 2 sub-columns for readability) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Title</label>
+            <p className="text-lg font-semibold">{selected.title}</p>
+          </div>
+
+          {selected.description && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Description</label>
+              <p className="text-sm">{selected.description}</p>
+            </div>
+          )}
+
+          {selected.dimension && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Dimension</label>
+              <p className="text-sm">{selected.dimension}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Category</label>
+            <p className="text-sm">{selected.category}</p>
+          </div>
+
+          {!!(selected.tags && selected.tags.length) && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Tags</label>
+              <p className="text-sm">{selected.tags.join(", ")}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          {selected.culture && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Culture</label>
+              <p className="text-sm">{selected.culture}</p>
+            </div>
+          )}
+
+          {selected.department && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Department</label>
+              <p className="text-sm">{selected.department}</p>
+            </div>
+          )}
+
+          {selected.period && (
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Period</label>
+              <p className="text-sm">{selected.period}</p>
+            </div>
+          )}
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Exact Found Date</label>
+            <p className="text-sm">{selected.exact_found_date || ""}</p>
+          </div>
+
+          <LocationBlock loc={selected.location} />
+        </div>
+      </div>
+
+      {/* Submission Info */}
+      <div className="border-t pt-4">
+        <h4 className="font-semibold mb-4">Submission Information</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Curator</label>
+            <p>{selected.curatorUsername}</p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Submitted Date</label>
+            <p>{formatDate(selected.submittedAt)}</p>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">Status</label>
+            <div className="mt-1">
+              {getStatusBadge((selected.status as Status) ?? "pending")}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
           </DialogContent>
         </Dialog>
       </div>

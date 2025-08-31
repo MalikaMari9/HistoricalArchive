@@ -41,5 +41,13 @@ public interface CuratorApplicationRepository extends JpaRepository<CuratorAppli
 	  @Query("SELECT ca FROM CuratorApplication ca WHERE ca.applicationStatus IN :statuses ORDER BY ca.submittedAt DESC")
 	    List<CuratorApplication> findTopNByStatuses(@Param("statuses") List<ApplicationStatus> statuses, Pageable pageable);
 
+	  long countByProfessor_UserIdAndApplicationStatus(Integer professorId, ApplicationStatus status);
+
+	  Page<CuratorApplication> findByApplicationStatusAndProfessor_UserId(ApplicationStatus status, Integer professorId, Pageable pageable);
+
+	  List<CuratorApplication> findByApplicationStatusAndProfessor_UserId(ApplicationStatus status, Integer professorId);
+
+
+
 
 }

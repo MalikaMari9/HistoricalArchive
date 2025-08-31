@@ -154,6 +154,8 @@ export const Sidebar = ({
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">PROFESSOR</h3>
                     <Link to="/professor/review" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Review Arts</span></Link>
                     <Link to="/professor/curator-applications" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Review Curators</span></Link>
+                    <Link to="/professor/recent-decisions" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Professor Audit</span></Link>
+                    
                   </div>
                 )}
 

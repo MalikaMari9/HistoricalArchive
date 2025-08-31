@@ -19,6 +19,8 @@ import jakarta.servlet.http.HttpSession;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -70,58 +72,180 @@ public class ProfessorDashboardController {
     @GetMapping("/recent-decisions")
     public ResponseEntity<Map<String, Object>> getRecentDecisions(
         @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "5") int size
+        @RequestParam(defaultValue = "5") int size,
+        HttpSession session
     ) {
-        List<UserArtifact> reviewedArtifacts = userArtifactRepository.findTopNByStatuses(
-            List.of(ApplicationStatus.accepted, ApplicationStatus.rejected),
-            PageRequest.of(0, Integer.MAX_VALUE)  // fetch all first, we'll paginate manually
-        );
+        User professor = (User) session.getAttribute("loggedInUser");
+        if (professor == null || professor.getRole() != UserRole.professor) {
+            return ResponseEntity.status(401).build();
+        }
 
-        List<ReviewDecisionDTO> artifactDecisions = reviewedArtifacts.stream()
+        // === Artifact decisions (by this professor) ===
+        List<UserArtifact> artifactList = userArtifactRepository.findTopNByStatusesAndProfessorId(
+            List.of(ApplicationStatus.accepted, ApplicationStatus.rejected),
+            professor.getUserId(),
+            PageRequest.of(0, Integer.MAX_VALUE)
+        ).getContent();
+
+        List<ReviewDecisionDTO> artifactDecisions = artifactList.stream()
             .map(ua -> {
                 Optional<Artifact> artifactOpt = artifactRepository.findById(ua.getArtifactId());
                 Optional<User> curatorOpt = userRepository.findById(ua.getUserId());
                 if (artifactOpt.isEmpty() || curatorOpt.isEmpty()) return null;
+
+                Instant reviewed = ua.getReviewedAt();
+                if (reviewed == null) return null; // skip if not reviewed yet
 
                 return new ReviewDecisionDTO(
                     "artifact",
                     artifactOpt.get().getTitle(),
                     ua.getStatus().name().toLowerCase(),
                     curatorOpt.get().getUsername(),
-                    ua.getSavedAt().atZone(ZoneId.systemDefault()).toLocalDateTime()
+                    reviewed.atZone(ZoneId.systemDefault()).toLocalDateTime()
                 );
             })
             .filter(Objects::nonNull)
-            .collect(Collectors.toList());
+            .toList();
 
+        // === Curator application decisions (by this professor) ===
         List<CuratorApplication> reviewedApps = curatorApplicationRepo.findTopNByStatuses(
             List.of(ApplicationStatus.accepted, ApplicationStatus.rejected),
             PageRequest.of(0, Integer.MAX_VALUE)
         );
 
         List<ReviewDecisionDTO> curatorDecisions = reviewedApps.stream()
+            .filter(app -> app.getProfessor() != null && app.getProfessor().getUserId().equals(professor.getUserId()))
             .map(app -> {
-                if (app.getProfessor() == null) return null;
+                Instant reviewed = app.getReviewedAt();
+                if (reviewed == null) return null;
+
                 return new ReviewDecisionDTO(
                     "curator",
                     app.getFname(),
                     app.getApplicationStatus().name().toLowerCase(),
                     app.getUser().getUsername(),
-                    app.getSubmittedAt().atZone(ZoneId.systemDefault()).toLocalDateTime()
+                    reviewed.atZone(ZoneId.systemDefault()).toLocalDateTime()
                 );
             })
             .filter(Objects::nonNull)
-            .collect(Collectors.toList());
+            .toList();
 
+        // === Combine and sort ===
         List<ReviewDecisionDTO> all = new ArrayList<>();
         all.addAll(artifactDecisions);
         all.addAll(curatorDecisions);
-        all.sort((a, b) -> b.getDate().compareTo(a.getDate())); // Descending
+        all.sort((a, b) -> b.getDate().compareTo(a.getDate())); // newest first
 
+        // === Paginate manually ===
         int total = all.size();
         int start = page * size;
         int end = Math.min(start + size, total);
         List<ReviewDecisionDTO> paginated = (start < end) ? all.subList(start, end) : List.of();
+
+        // === Build response ===
+        Map<String, Object> response = new HashMap<>();
+        response.put("items", paginated);
+        response.put("total", total);
+
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/recent-decisions/filter")
+    public ResponseEntity<Map<String, Object>> getFilteredRecentDecisions(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size,
+        @RequestParam(defaultValue = "all") String type,
+        @RequestParam(defaultValue = "all") String status,
+        @RequestParam(required = false) String q,
+        HttpSession session
+    ) {
+        User professor = (User) session.getAttribute("loggedInUser");
+        if (professor == null || professor.getRole() != UserRole.professor) {
+            return ResponseEntity.status(401).build();
+        }
+
+        String qLower = (q != null) ? q.trim().toLowerCase() : "";
+        boolean doSearch = !qLower.isEmpty();
+
+        List<ReviewDecisionDTO> results = new ArrayList<>();
+        Integer profId = professor.getUserId();
+
+        // === Artifact Decisions ===
+        if (type.equals("all") || type.equals("artifact")) {
+            List<UserArtifact> artifactList = userArtifactRepository
+                .findTopNByStatusesAndProfessorId(
+                    List.of(ApplicationStatus.accepted, ApplicationStatus.rejected),
+                    profId,
+                    PageRequest.of(0, Integer.MAX_VALUE)
+                ).getContent();
+
+            for (UserArtifact ua : artifactList) {
+                if (ua.getReviewedAt() == null) continue;
+
+                Optional<Artifact> artifactOpt = artifactRepository.findById(ua.getArtifactId());
+                Optional<User> curatorOpt = userRepository.findById(ua.getUserId());
+
+                if (artifactOpt.isEmpty() || curatorOpt.isEmpty()) continue;
+
+                String title = artifactOpt.get().getTitle();
+                String curatorUsername = curatorOpt.get().getUsername();
+                String statusStr = ua.getStatus().name().toLowerCase(); // accepted / rejected
+
+                if (!status.equals("all") && !status.equalsIgnoreCase(statusStr)) continue;
+                if (doSearch && !(title + " " + curatorUsername).toLowerCase().contains(qLower)) continue;
+
+                ReviewDecisionDTO dto = new ReviewDecisionDTO(
+                    "artifact",
+                    title,
+                    statusStr.equals("accepted") ? "approved" : "rejected",
+                    curatorUsername,
+                    ua.getReviewedAt().atZone(ZoneId.systemDefault()).toLocalDateTime()
+                );
+                dto.setStatus(statusStr);
+
+                results.add(dto);
+            }
+        }
+
+        // === Curator Application Decisions ===
+        if (type.equals("all") || type.equals("curator")) {
+            List<CuratorApplication> apps = curatorApplicationRepo.findTopNByStatuses(
+                List.of(ApplicationStatus.accepted, ApplicationStatus.rejected),
+                PageRequest.of(0, Integer.MAX_VALUE)
+            );
+
+            for (CuratorApplication app : apps) {
+                if (app.getReviewedAt() == null) continue;
+                if (app.getProfessor() == null || !app.getProfessor().getUserId().equals(profId)) continue;
+
+                String fname = app.getFname();
+                String curatorUsername = app.getUser().getUsername();
+                String statusStr = app.getApplicationStatus().name().toLowerCase();
+
+                if (!status.equals("all") && !status.equalsIgnoreCase(statusStr)) continue;
+                if (doSearch && !(fname + " " + curatorUsername).toLowerCase().contains(qLower)) continue;
+
+                ReviewDecisionDTO dto = new ReviewDecisionDTO(
+                    "curator",
+                    fname,
+                    statusStr.equals("accepted") ? "approved" : "rejected",
+                    curatorUsername,
+                    app.getReviewedAt().atZone(ZoneId.systemDefault()).toLocalDateTime()
+                );
+                dto.setStatus(statusStr);
+
+                results.add(dto);
+            }
+        }
+
+        // Sort by date descending
+        results.sort((a, b) -> b.getDate().compareTo(a.getDate()));
+
+        // Paginate manually
+        int total = results.size();
+        int start = Math.min(page * size, total);
+        int end = Math.min(start + size, total);
+        List<ReviewDecisionDTO> paginated = results.subList(start, end);
 
         Map<String, Object> response = new HashMap<>();
         response.put("items", paginated);
@@ -131,17 +255,7 @@ public class ProfessorDashboardController {
     }
 
 
-    
-    @GetMapping("/stats")
-    public ResponseEntity<Map<String, Integer>> getProfessorStats() {
-        Map<String, Integer> stats = Map.of(
-            "pending", 15,
-            "approved", 42,
-            "rejected", 8,
-            "total", 65
-        );
-        return ResponseEntity.ok(stats);
-    }
+
       
     @GetMapping("/curator-applications")
     public ResponseEntity<List<CuratorApplicationRequest>> getCuratorApplications() {
@@ -265,68 +379,134 @@ public class ProfessorDashboardController {
     
     
     @GetMapping("/review-artifacts")
-    @CrossOrigin(origins = "http://localhost:8081", exposedHeaders = "X-Total-Count") // expose header
+    @CrossOrigin(origins = {"http://localhost:3000"}, exposedHeaders = {"X-Total-Count"})
     public ResponseEntity<List<PendingArtifactDTO>> getAllReviewArtifacts(
             @RequestParam(name = "status", required = false) ApplicationStatus status,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "6") int size
+            @RequestParam(name = "size", defaultValue = "6") int size,
+            @RequestParam(name = "q", required = false) String q,
+            HttpSession session
     ) {
         if (size <= 0) size = 6;
         if (page < 0) page = 0;
 
-        Pageable pageable = PageRequest.of(page, size);
+        User professor = (User) session.getAttribute("loggedInUser");
+        if (professor == null || professor.getRole() != UserRole.professor) {
+            return ResponseEntity.status(401).build();
+        }
 
-        Page<UserArtifact> uaPage = (status == null)
-                ? userArtifactRepository.findAllByOrderBySavedAtDesc(pageable)
-                : userArtifactRepository.findByStatusOrderBySavedAtDesc(status, pageable);
+        // ---- Branch 1: no search term -> keep DB paging (fast path)
+        if (q == null || q.isBlank()) {
+            Pageable pageable = PageRequest.of(page, size);
+            Page<UserArtifact> uaPage;
 
-        List<PendingArtifactDTO> content = uaPage.getContent().stream()
-            .map(ua -> {
-                var artifactOpt = artifactRepository.findById(ua.getArtifactId());
-                if (artifactOpt.isEmpty()) return null;
-                var curatorOpt = userRepository.findById(ua.getUserId());
-                if (curatorOpt.isEmpty()) return null;
+            if (status == null) {
+                uaPage = userArtifactRepository.findAllByOrderBySavedAtDesc(pageable);
+            } else if (status == ApplicationStatus.pending) {
+                uaPage = userArtifactRepository.findByStatusOrderBySavedAtDesc(status, pageable);
+            } else {
+                uaPage = userArtifactRepository.findByStatusAndProfessorIdOrderBySavedAtDesc(
+                        status, professor.getUserId(), pageable);
+            }
 
-                Artifact artifact = artifactOpt.get();
-                User curator = curatorOpt.get();
+            List<PendingArtifactDTO> content = uaPage.getContent().stream()
+                    .map(ua -> buildPendingArtifactDTO(ua))
+                    .filter(Objects::nonNull)
+                    .toList();
 
-                return new PendingArtifactDTO(
-                    artifact.getId(),
-                    artifact.getTitle(),
-                    artifact.getDescription(),
-                    artifact.getCategory(),
-                    artifact.getCulture(),
-                    artifact.getDepartment(),
-                    artifact.getPeriod(),
-                    artifact.getExact_found_date(),
-                    artifact.getMedium(),
-                    artifact.getDimension(),
-                    artifact.getTags(),
-                    artifact.getImages(),
-                    artifact.getLocation(),
-                    artifact.getUploaded_by(),
-                    artifact.getUploaded_at(),
-                    artifact.getUpdated_at(),
-                    artifact.getArtist_name(),
-                    artifact.getImage_url(),
-                    ua.getUserArtifactId(),
-                    ua.getStatus(),
-                    ua.getSavedAt(),
-                    ua.getReason(),
-                    ua.getProfessorId(),
-                    curator.getUserId(),
-                    curator.getUsername(),
-                    curator.getEmail(),
-                    curator.getProfilePath(),
-                    curator.getCreatedAt()
-                );
-            })
-            .filter(Objects::nonNull)
-            .toList();
+            return ResponseEntity.ok()
+                    .header("X-Total-Count", String.valueOf(uaPage.getTotalElements()))
+                    .body(content);
+        }
+
+        // ---- Branch 2: search term present -> filter THEN paginate (correct totals)
+        final String qLower = q.toLowerCase();
+
+        // Build base list WITHOUT paging
+        List<UserArtifact> baseList;
+        if (status == null) {
+            // If you don't have this repo method, use findAll() and sort in-memory by savedAt desc
+            // baseList = userArtifactRepository.findAll();
+            // baseList.sort((a,b) -> b.getSavedAt().compareTo(a.getSavedAt()));
+        	  baseList = userArtifactRepository.findAllByOrderBySavedAtDesc(); // preferred if available
+        } else if (status == ApplicationStatus.pending) {
+            baseList = userArtifactRepository.findByStatusOrderBySavedAtDesc(status);
+        } else {
+            baseList = userArtifactRepository.findByStatusAndProfessorIdOrderBySavedAtDesc(
+                    status, professor.getUserId());
+        }
+
+        // Map to DTOs, filtering by title (case-insensitive) BEFORE paginating
+        List<PendingArtifactDTO> filtered = baseList.stream()
+                .map(ua -> {
+                    // Load artifact once, check title match, then build DTO
+                    var artifactOpt = artifactRepository.findById(ua.getArtifactId());
+                    if (artifactOpt.isEmpty()) return null;
+                    var artifact = artifactOpt.get();
+                    String title = artifact.getTitle() == null ? "" : artifact.getTitle().toLowerCase();
+                    if (!title.contains(qLower)) return null;
+                    return buildPendingArtifactDTO(ua, artifact);
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        int total = filtered.size();
+        int start = Math.min(page * size, total);
+        int end = Math.min(start + size, total);
+        List<PendingArtifactDTO> pageSlice = filtered.subList(start, end);
 
         return ResponseEntity.ok()
-            .header("X-Total-Count", String.valueOf(uaPage.getTotalElements()))
-            .body(content);
+                .header("X-Total-Count", String.valueOf(total))
+                .body(pageSlice);
+    }
+
+    /** Build DTO (loads curator, and optionally reuses already-fetched artifact). */
+    private PendingArtifactDTO buildPendingArtifactDTO(UserArtifact ua) {
+        var artifactOpt = artifactRepository.findById(ua.getArtifactId());
+        if (artifactOpt.isEmpty()) return null;
+        return buildPendingArtifactDTO(ua, artifactOpt.get());
+    }
+
+    private PendingArtifactDTO buildPendingArtifactDTO(UserArtifact ua, Artifact artifact) {
+        var curatorOpt = userRepository.findById(ua.getUserId());
+        if (curatorOpt.isEmpty()) return null;
+        User curator = curatorOpt.get();
+
+        return new PendingArtifactDTO(
+                // --- from Mongo Artifact ---
+                artifact.getId(),
+                artifact.getTitle(),
+                artifact.getDescription(),
+                artifact.getCategory(),
+                artifact.getCulture(),
+                artifact.getDepartment(),
+                artifact.getPeriod(),
+                artifact.getExact_found_date(),
+                artifact.getMedium(),
+                artifact.getDimension(),
+                artifact.getTags(),
+                artifact.getImages(),
+                artifact.getLocation(),
+                artifact.getUploaded_by(),
+                artifact.getUploaded_at(),
+                artifact.getUpdated_at(),
+                artifact.getArtist_name(),
+                artifact.getImage_url(),
+
+                // --- from UserArtifact ---
+                ua.getUserArtifactId(),
+                ua.getStatus(),
+                ua.getSavedAt(),
+                ua.getReason(),
+                ua.getProfessorId(),
+
+                // --- from User (curator) ---
+                curator.getUserId(),
+                curator.getUsername(),
+                curator.getEmail(),
+                curator.getProfilePath(),
+                curator.getCreatedAt()
+        );
     }
 
 
@@ -379,6 +559,7 @@ public class ProfessorDashboardController {
 
         // Approve application
         application.setApplicationStatus(ApplicationStatus.accepted);
+        application.setReviewedAt(Instant.now());
         curatorApplicationRepo.save(application);
 
         // Promote user to 'curator'
@@ -433,6 +614,7 @@ public class ProfessorDashboardController {
         // Reject application
         application.setProfessor(professor);
         application.setApplicationStatus(ApplicationStatus.rejected);
+        application.setReviewedAt(Instant.now());
         application.setRejectionReason(reason);
         curatorApplicationRepo.save(application);
 
@@ -477,6 +659,7 @@ public class ProfessorDashboardController {
         String comment = body != null ? body.get("comment") : null;
 
         ua.setStatus(ApplicationStatus.accepted);
+        ua.setReviewedAt(Instant.now());
         ua.setReason(comment);
         ua.setProfessorId(professor.getUserId()); 
         userArtifactRepository.save(ua);
@@ -517,9 +700,10 @@ public class ProfessorDashboardController {
         }
 
         UserArtifact ua = optionalUA.get();
-        if (ua.getStatus() != ApplicationStatus.pending) {
-            return ResponseEntity.badRequest().body("Submission is not in pending state.");
+        if (ua.getStatus() != ApplicationStatus.pending && ua.getStatus() != ApplicationStatus.accepted) {
+            return ResponseEntity.badRequest().body("Only pending or accepted submissions can be rejected.");
         }
+
 
         String reason = body.get("reason");
         if (reason == null || reason.trim().isEmpty()) {
@@ -527,6 +711,8 @@ public class ProfessorDashboardController {
         }
 
         ua.setStatus(ApplicationStatus.rejected);
+        ua.setReviewedAt(Instant.now());
+
         ua.setReason(reason);
         ua.setProfessorId(professor.getUserId()); 
         userArtifactRepository.save(ua);
@@ -551,17 +737,138 @@ public class ProfessorDashboardController {
     }
      
     @GetMapping("/review-artifacts/counts")
-    public ResponseEntity<Map<String, Long>> getReviewArtifactCounts() {
-        long pending  = userArtifactRepository.countByStatus(ApplicationStatus.pending);   // use .PENDING if your enum is uppercased
-        long accepted = userArtifactRepository.countByStatus(ApplicationStatus.accepted);  // or ApplicationStatus.ACCEPTED
-        long rejected = userArtifactRepository.countByStatus(ApplicationStatus.rejected);  // or ApplicationStatus.REJECTED
+    public ResponseEntity<Map<String, Long>> getReviewArtifactCounts(HttpSession session) {
+        User professor = (User) session.getAttribute("loggedInUser");
+        if (professor == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        long accepted = userArtifactRepository.countByStatusAndProfessorId(ApplicationStatus.accepted, professor.getUserId());
+        long rejected = userArtifactRepository.countByStatusAndProfessorId(ApplicationStatus.rejected, professor.getUserId());
+        long total = accepted + rejected;
+
+        // Note: pending is global (not filtered by professor)
+        long pending = userArtifactRepository.countByStatus(ApplicationStatus.pending);
 
         return ResponseEntity.ok(Map.of(
-            "pending",  pending,
-            "accepted", accepted,
-            "rejected", rejected
+            "pending",  pending,        // shared pool
+            "accepted", accepted,       // professor-specific
+            "rejected", rejected,       // professor-specific
+            "total", total              // professor-specific
         ));
     }
+
+    @GetMapping("/review-stats/full")
+    public ResponseEntity<Map<String, Object>> getFullReviewStats(HttpSession session) {
+        User professor = (User) session.getAttribute("loggedInUser");
+        if (professor == null || professor.getRole() != UserRole.professor) {
+            return ResponseEntity.status(401).build();
+        }
+
+        Integer professorId = professor.getUserId();
+
+        // === Artifact counts ===
+        long artifactAccepted = userArtifactRepository.countByStatusAndProfessorId(ApplicationStatus.accepted, professorId);
+        long artifactRejected = userArtifactRepository.countByStatusAndProfessorId(ApplicationStatus.rejected, professorId);
+        long artifactPending = userArtifactRepository.countByStatus(ApplicationStatus.pending); // global
+        long artifactTotal = artifactAccepted + artifactRejected;
+
+        // === Curator application counts (professor-specific) ===
+        long curatorAccepted = curatorApplicationRepo.countByProfessor_UserIdAndApplicationStatus(professorId, ApplicationStatus.accepted);
+        long curatorRejected = curatorApplicationRepo.countByProfessor_UserIdAndApplicationStatus(professorId, ApplicationStatus.rejected);
+long curatorPending = curatorApplicationRepo.countByApplicationStatus(ApplicationStatus.pending); // global
+        long curatorTotal = curatorAccepted + curatorRejected;
+        
+        
+        List<CuratorApplication> acceptedCurators = curatorApplicationRepo
+        	    .findByApplicationStatus(ApplicationStatus.accepted)
+        	    .stream()
+        	    .filter(c -> c.getProfessor() != null && 
+        	                 c.getProfessor().getUserId().equals(professorId))
+        	    .toList();
+
+        	System.out.println("Accepted curator apps reviewed by prof " + professorId + ": " + acceptedCurators.size());
+        	acceptedCurators.forEach(c -> System.out.println("AppID: " + c.getApplicationId() + ", fname: " + c.getFname()));
+
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("artifact", Map.of(
+            "pending", artifactPending,
+            "accepted", artifactAccepted,
+            "rejected", artifactRejected,
+            "total", artifactTotal
+        ));
+        response.put("curator", Map.of(
+            "pending", curatorPending,
+            "accepted", curatorAccepted,
+            "rejected", curatorRejected,
+            "total", curatorTotal
+        ));
+
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/curator-applications/review")
+    @CrossOrigin(origins = {"http://localhost:3000"}, exposedHeaders = {"X-Total-Count"})
+    public ResponseEntity<List<CuratorApplication>> getCuratorAppsForReview(
+        @RequestParam(required = false) ApplicationStatus status,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "6") int size,
+        @RequestParam(required = false) String q,
+        HttpSession session
+    ) {
+        User user = (User) session.getAttribute("loggedInUser");
+        if (user == null || user.getRole() != UserRole.professor) {
+            return ResponseEntity.status(401).build();
+        }
+
+        ApplicationStatus s = (status != null) ? status : ApplicationStatus.pending;
+        Integer profId = user.getUserId();
+
+        if (q == null || q.isBlank()) {
+            // no search → paged directly
+            Page<CuratorApplication> result = (s == ApplicationStatus.pending)
+                ? curatorApplicationRepo.findByApplicationStatus(s, PageRequest.of(page, size))
+                : curatorApplicationRepo.findByApplicationStatusAndProfessor_UserId(s, profId, PageRequest.of(page, size));
+
+            return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(result.getTotalElements()))
+                .body(result.getContent());
+        }
+
+        // search mode → filter manually
+        List<CuratorApplication> full = (s == ApplicationStatus.pending)
+            ? curatorApplicationRepo.findByApplicationStatus(s)
+            : curatorApplicationRepo.findByApplicationStatusAndProfessor_UserId(s, profId);
+
+        String qLower = q.toLowerCase();
+
+        List<CuratorApplication> filtered = full.stream().filter(app -> {
+            String combined = (
+                safe(app.getFname()) + " " +
+                safe(app.getUser() != null ? app.getUser().getUsername() : "") + " " +
+                safe(app.getUser() != null ? app.getUser().getEmail() : "") + " " +
+                safe(app.getEducationalBackground()) + " " +
+                safe(app.getMotivationReason())
+            ).toLowerCase();
+            return combined.contains(qLower);
+        }).toList();
+
+        int total = filtered.size();
+        int start = Math.min(page * size, total);
+        int end = Math.min(start + size, total);
+
+        return ResponseEntity.ok()
+            .header("X-Total-Count", String.valueOf(total))
+            .body(filtered.subList(start, end));
+    }
+
+    private static String safe(String str) {
+        return (str == null) ? "" : str;
+    }
+
+
+
 
 
     

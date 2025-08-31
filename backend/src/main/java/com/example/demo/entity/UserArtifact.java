@@ -30,6 +30,10 @@ public class UserArtifact {
 
     @Column(name = "professor_id")
     private Integer professorId;
+    
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
 
     // Getters and Setters
     public Integer getUserArtifactId() {
@@ -87,4 +91,14 @@ public class UserArtifact {
     public void setProfessorId(Integer professorId) {
         this.professorId = professorId;
     }
+
+	public Instant getReviewedAt() {
+		return reviewedAt;
+	}
+
+	public void setReviewedAt(Instant reviewedAt) {
+		this.reviewedAt = reviewedAt;
+	}
+    
+    
 }

@@ -37,6 +37,7 @@ public class CuratorApplication {
     
     @Column(length = 400)
     private String motivationReason;
+    
 
     @Column(name = "submitted_at", updatable = false)
     private Instant submittedAt = Instant.now(); // default on insert
@@ -64,6 +65,9 @@ public class CuratorApplication {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "professor_id") // this is new
     private User professor; // the professor who reviewed this application
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
 
 
     // Getters and setters
@@ -172,6 +176,16 @@ public class CuratorApplication {
 	public void setProfessor(User professor) {
 		this.professor = professor;
 	}
+
+	public Instant getReviewedAt() {
+		return reviewedAt;
+	}
+
+	public void setReviewedAt(Instant reviewedAt) {
+		this.reviewedAt = reviewedAt;
+	}
+	
+	
     
     
 }

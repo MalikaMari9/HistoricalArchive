@@ -1089,6 +1089,7 @@ export interface ProfessorStats {
   total: number;
 }
 
+
 export interface ProfessorPendingCurator {
   applicationId: number;
   username: string;
@@ -1097,6 +1098,24 @@ export interface ProfessorPendingCurator {
   dob: string; // ISO
   submittedAt: string; // ISO
 }
+
+export interface ReviewCuratorAppDto {
+  applicationId: number;
+  username: string;
+  email: string;
+  fname: string;
+  dob: string; // ISO
+  educationalBackground: string;
+  certification: string;
+  certificationPath: string;
+  personalExperience: string;
+  portfolioLink: string;
+  motivationReason: string;
+  submittedAt: string; // ISO
+    applicationStatus: AppStatus | string;
+}
+
+
 
 export interface ProfessorPendingArtifact {
   id: string;
@@ -1123,10 +1142,7 @@ export async function professorListRecentDecisions(page = 0, size = 5) {
 }
 
 
-export const professorGetStats = async (): Promise<ProfessorStats> => {
-  const res = await api.get<ProfessorStats>("/professor/dashboard/stats");
-  return res.data;
-};
+
 
 export const professorListPendingCurators = async (): Promise<
   ProfessorPendingCurator[]
@@ -1161,6 +1177,7 @@ export interface ProfessorPendingCurator {
   portfolioLink: string;
   motivationReason: string;
   submittedAt: string; // ISO
+  
 }
 
 export const applyForCurator = async (form: FormData): Promise<void> => {
@@ -1228,37 +1245,60 @@ export interface ReviewArtifactDto {
   };
 }
 
+
+
 /** Page of reviewable artifacts */
 export const professorListReviewArtifacts = async (
   status: AppStatus,
   page = 0,
   size = 6,
-  opts?: { signal?: AbortSignal }
+  opts?: { signal?: AbortSignal; q?: string }   // <— added q
 ): Promise<{ content: ReviewArtifactDto[]; total: number }> => {
   const res = await api.get<ReviewArtifactDto[]>(
     "/professor/dashboard/review-artifacts",
     {
-      params: { status, page, size },
+      params: { status, page, size, q: opts?.q },   // <— forward q
       signal: opts?.signal as any,
     }
   );
-  // backend sends total count in header
   const total = parseInt(
-    res.headers["x-total-count"] ?? res.headers["X-Total-Count"] ?? "0",
+    (res.headers["x-total-count"] ?? res.headers["X-Total-Count"] ?? "0") as string,
     10
   );
   return { content: res.data, total };
 };
-
 /** Counts grouped by status */
-export const professorReviewArtifactCounts = async (): Promise<
-  Record<AppStatus, number>
-> => {
-  const res = await api.get<Record<AppStatus, number>>(
-    "/professor/dashboard/review-artifacts/counts"
-  );
+export const professorReviewArtifactCounts = async (): Promise<ProfessorStats> => {
+
+const res = await api.get<ProfessorStats>(
+  "/professor/dashboard/review-artifacts/counts"
+);
+
   return res.data;
 };
+
+export const professorListReviewCuratorApplications = async (
+  status: "pending" | "accepted" | "rejected",
+  page: number,
+  size: number,
+  opts?: { q?: string; signal?: AbortSignal }
+): Promise<{ content: ReviewCuratorAppDto[]; total: number }> => {
+  const params = new URLSearchParams();
+  params.set("status", status);
+  params.set("page", String(page));
+  params.set("size", String(size));
+  if (opts?.q) params.set("q", opts.q);
+
+  const res = await api.get(`/professor/dashboard/curator-applications/review?${params.toString()}`, {
+    signal: opts?.signal,
+  });
+
+  return {
+    content: res.data,
+    total: Number(res.headers["x-total-count"]) || 0,
+  };
+};
+
 
 /** Accept a submission */
 export const professorAcceptArtifact = async (
@@ -1280,6 +1320,71 @@ export const professorRejectArtifact = async (
     { reason }
   );
 };
+
+export interface ReviewStatsGroup {
+  pending: number;
+  accepted: number;
+  rejected: number;
+  total: number;
+}
+
+export interface FullProfessorReviewStats {
+  artifact: ReviewStatsGroup;
+  curator: ReviewStatsGroup;
+}
+
+export const professorFullReviewStats = async (): Promise<FullProfessorReviewStats> => {
+  const res = await api.get<FullProfessorReviewStats>(
+    "/professor/dashboard/review-stats/full"
+  );
+  return res.data;
+};
+
+
+/* ------------------------------- Professor Audit API ------------------------------- */
+
+export type ReviewDecisionDto = {
+  type: "artifact" | "curator";
+  title: string;
+  decision: "approved" | "rejected";
+  curator: string; // curator username
+  date: string; // ISO date string
+  status: "accepted" | "rejected"; // raw DB status, used optionally
+};
+
+export async function professorRecentDecisions(
+  page: number,
+  size: number,
+  opts?: {
+    signal?: AbortSignal;
+    q?: string;
+    type?: "artifact" | "curator" | "all";
+    status?: "all" | "accepted" | "rejected";
+  }
+): Promise<{ items: ReviewDecisionDto[]; total: number }> {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("size", String(size));
+  if (opts?.q) params.set("q", opts.q.trim());
+  if (opts?.type) params.set("type", opts.type);
+  if (opts?.status) params.set("status", opts.status);
+
+  const res = await fetch(`/api/professor/dashboard/recent-decisions/filter?${params.toString()}`, {
+    method: "GET",
+    credentials: "include",
+    signal: opts?.signal,
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Failed to fetch filtered recent decisions (${res.status})`);
+  }
+
+  return res.json();
+}
+
+
 
 /* ------------------------------- Profile API ------------------------------- */
 
