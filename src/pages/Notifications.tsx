@@ -21,6 +21,7 @@ type UserRole = "visitor" | "curator" | "professor" | "admin";
 
 /* -------------------------------- Helpers --------------------------------- */
 
+/** Show "x minutes/hours/days ago" */
 function formatRelative(isoDate: string) {
   const then = new Date(isoDate).getTime();
   const now = Date.now();
@@ -35,53 +36,103 @@ function formatRelative(isoDate: string) {
   return `${d}d ago`;
 }
 
+/**
+ * Prefer a real artifactId when present.
+ * - Some notifications (e.g., artifact submissions) historically carry userArtifactId in relatedId.
+ * - If backend provides `artifactId` alongside, we prefer that; otherwise we return null for submissions
+ *   to avoid building a broken link with a userArtifactId.
+ */
+function resolveArtifactId(n: NotificationDto): string | null {
+  const maybeArtifactId = (n as any).artifactId as string | undefined; // optional field from backend
+  if (n.relatedType === "artifact") return n.relatedId ?? null;
+  if (n.relatedType === "artifact_submission") return maybeArtifactId ?? null; // only link if artifactId exists
+  return null;
+}
+
+/**
+ * Decide where a notification should link.
+ * Rules:
+ * - Curator application statuses: no link.
+ * - Professor:
+ *    - Curator application review → dedicated review route.
+ *    - Artifact submissions (uploaded/submitted/resubmitted): link to artwork only if we have a real artifactId.
+ *    - Plain artifact notifications: link to artwork by artifactId.
+ * - Everyone:
+ *    - Accepted/Rejected artifact → link to artwork by artifactId.
+ */
 function buildVisitLink(n: NotificationDto, userRole: UserRole): string | null {
   if (
     n.notificationType === "CURATOR_APPLICATION_APPROVED" ||
     n.notificationType === "CURATOR_APPLICATION_REJECTED"
   ) return null;
 
+
   if (userRole === "professor") {
     if (n.relatedType === "curator_application" && n.relatedId)
       return `/professor/curators/review/${n.relatedId}`;
 
-    if (n.relatedType === "artifact") {
-      if (n.notificationType === "ARTIFACT_UPLOADED" && n.relatedId)
-        return `/professor/review-artifacts?status=pending&focusSubmissionId=${encodeURIComponent(n.relatedId)}`;
+
+    // Handle all artifact-related submissions
+    if (n.relatedType === "artifact" || n.relatedType === "artifact_submission") {
+      if (
+        ["ARTIFACT_UPLOADED", "ARTIFACT_SUBMITTED", "ARTIFACT_RESUBMITTED"].includes(n.notificationType) &&
+        n.relatedId
+      ) {
+        return `/artwork/${n.relatedId}`;
+      }
+
+
       if (n.relatedId) return `/artwork/${n.relatedId}`;
     }
   }
 
+
+  // For curators or general users, accepted/rejected notifications
   if (
     n.relatedType === "artifact" &&
-    (n.notificationType === "ARTIFACT_ACCEPTED" || n.notificationType === "ARTIFACT_REJECTED") &&
+    ["ARTIFACT_ACCEPTED", "ARTIFACT_REJECTED"].includes(n.notificationType) &&
     n.relatedId
-  ) return `/artwork/${n.relatedId}`;
+  ) {
+    return `/artwork/${n.relatedId}`;
+  }
+
 
   return null;
 }
+
 
 /* -------------------------------- Component ------------------------------- */
 
 export const Notifications = () => {
   const navigate = useNavigate();
   const { user, ready } = useAuthGuard();
+
   const [role, setRole] = useState<UserRole>("visitor");
   const [items, setItems] = useState<NotificationDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const abortRef = useRef<AbortController | null>(null);
+
+  // Keep latest state in refs so we can use them safely in unmount cleanup
+  const latestItemsRef = useRef<NotificationDto[]>([]);
+  const latestRoleRef = useRef<UserRole>("visitor");
+  useEffect(() => { latestItemsRef.current = items; }, [items]);
+  useEffect(() => { latestRoleRef.current = role; }, [role]);
 
   const unreadCount = useMemo(() => items.filter((n) => !n.isRead).length, [items]);
 
+  /** Optimistically mark a single item as read in local state */
   function markAsReadLocally(id: number) {
     setItems((prev) =>
-      [...prev.map((item) =>
-        item.notiId === id ? { ...item, isRead: true } : item
-      )]
+      prev.map((item) => (item.notiId === id ? { ...item, isRead: true } : item))
     );
   }
 
+  /**
+   * Load profile + notifications.
+   * Sort: unread first, then newest first.
+   */
   useEffect(() => {
     if (!ready || !user) return;
 
@@ -98,20 +149,15 @@ export const Notifications = () => {
         setRole(me.role);
 
         const list = await listNotifications({ signal: ac.signal, unreadOnly: false });
-console.log("Fetched notifications:");
-list.forEach((n) => {
-  console.log(`ID: ${n.notiId}, isRead: ${n.isRead}`);
-});
 
-        setItems(list ?? []);
         const sorted = (list ?? []).sort((a, b) => {
-  if (a.isRead === b.isRead) {
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // latest first
-  }
-  return a.isRead ? 1 : -1; // unread first
-});
-setItems(sorted);
+          if (a.isRead === b.isRead) {
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(); // latest first
+          }
+          return a.isRead ? 1 : -1; // unread first
+        });
 
+        setItems(sorted);
       } catch (err: any) {
         if (err?.name === "CanceledError") return;
         const status = err?.response?.status;
@@ -126,9 +172,29 @@ setItems(sorted);
       }
     })();
 
-    return () => ac.abort();
+    // On unmount (leaving Notifications page): auto-mark non-linkable unread notifications as read.
+    return () => {
+      const currentItems = latestItemsRef.current ?? [];
+      const currentRole = latestRoleRef.current;
+
+      const toMark = currentItems.filter((n) => {
+        const link = buildVisitLink(n, currentRole);
+        return !n.isRead && !link; // unread AND no possible destination → auto-read
+      });
+
+      if (toMark.length > 0) {
+        // Fire-and-forget; no need to block navigation
+        Promise.allSettled(toMark.map((n) => markNotificationRead(n.notiId))).then(() => {
+          // Optimistically update local cache in case of fast back navigation
+          toMark.forEach((n) => markAsReadLocally(n.notiId));
+        });
+      }
+
+      ac.abort();
+    };
   }, [ready, user]);
 
+  /** Mark all current notifications as read (optimistic) */
   const markAllAsRead = async () => {
     if (unreadCount === 0) return;
     const prev = [...items];
@@ -137,8 +203,9 @@ setItems(sorted);
     try {
       await markAllNotificationsRead();
     } catch (e) {
-      console.error(e);
+      // rollback on failure
       setItems(prev);
+      console.error(e);
     }
   };
 
@@ -146,9 +213,7 @@ setItems(sorted);
 
   if (loading) {
     return (
-      
       <div className="container mx-auto px-4 py-8">
-        
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="hover:bg-accent">
             <ArrowLeft className="h-4 w-4" />
@@ -167,7 +232,7 @@ setItems(sorted);
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="hover:bg-accent">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-3xl font-bold text-foreground">Notifications</h1>
+        <h1 className="text-3xl font-bold text-foreground">Notifications</h1>
         </div>
         <div className="text-destructive mb-4">{error}</div>
         <Button onClick={() => window.location.reload()}>Retry</Button>
@@ -179,29 +244,17 @@ setItems(sorted);
 
   return (
     <div className="container mx-auto px-4 py-8">
-       <style>
-    {`
-      .scrollbar-thin::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      .scrollbar-thin::-webkit-scrollbar-thumb {
-        background-color: rgba(107, 114, 128, 0.4); /* like Tailwind gray-500 */
-        border-radius: 9999px;
-      }
-      .scrollbar-thin::-webkit-scrollbar-track {
-        background-color: transparent;
-      }
+      {/* lightweight custom scrollbar styles */}
+      <style>
+        {`
+          .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+          .scrollbar-thin::-webkit-scrollbar-thumb { background-color: rgba(107, 114, 128, 0.4); border-radius: 9999px; }
+          .scrollbar-thin::-webkit-scrollbar-track { background-color: transparent; }
+          .scrollbar-hide::-webkit-scrollbar { display: none; }
+          .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        `}
+      </style>
 
-      .scrollbar-hide::-webkit-scrollbar {
-        display: none;
-      }
-      .scrollbar-hide {
-        -ms-overflow-style: none; /* IE */
-        scrollbar-width: none;    /* Firefox */
-      }
-    `}
-  </style>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="hover:bg-accent">
@@ -224,10 +277,7 @@ setItems(sorted);
         </div>
       </div>
 
-     <div className="bg-card rounded-lg border shadow-sm max-h-[500px] overflow-y-auto scrollbar-thin">
-
-
-
+      <div className="bg-card rounded-lg border shadow-sm max-h-[500px] overflow-y-auto scrollbar-thin">
         <Table>
           <TableHeader>
             <TableRow>
@@ -256,7 +306,6 @@ setItems(sorted);
                   <TableCell className="text-muted-foreground text-sm">{time}</TableCell>
 
                   <TableCell className="max-w-md">
-                    
                     {visitLink ? (
                       <Link
                         to={visitLink}
@@ -290,22 +339,21 @@ setItems(sorted);
 
                   <TableCell>
                     {!n.isRead && (
-<Button
-  variant="default"
-  size="sm"
-  className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-md text-xs transition-colors"
-  onClick={async () => {
-    try {
-      await markNotificationRead(n.notiId);
-      markAsReadLocally(n.notiId);
-    } catch (e) {
-      console.error("Failed to mark notification as read", e);
-    }
-  }}
->
-  Mark Read
-</Button>
-
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-md text-xs transition-colors"
+                        onClick={async () => {
+                          try {
+                            await markNotificationRead(n.notiId);
+                            markAsReadLocally(n.notiId);
+                          } catch (e) {
+                            console.error("Failed to mark notification as read", e);
+                          }
+                        }}
+                      >
+                        Mark Read
+                      </Button>
                     )}
                   </TableCell>
                 </TableRow>

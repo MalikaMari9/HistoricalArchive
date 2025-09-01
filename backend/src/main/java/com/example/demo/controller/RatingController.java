@@ -40,14 +40,14 @@ public class RatingController {
             HttpSession session) {
         
         try {
-            // Validate session and user
+            // Step 1: Check user
             User user = (User) session.getAttribute("loggedInUser");
             if (user == null) {
                 return ResponseEntity.status(401)
                         .body(Map.of("error", "Authentication required"));
             }
 
-            // Validate input
+            // Step 2: Validate input
             if (ratingRequest.getArtifactId() == null || ratingRequest.getRatingValue() == null) {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "Artifact ID and rating value are required"));
@@ -58,73 +58,64 @@ public class RatingController {
                         .body(Map.of("error", "Rating must be between 1 and 5"));
             }
 
-            // Find or create UserArtifact relationship
-            Optional<UserArtifact> existingUserArtifact =
-            	    userArtifactRepository.findByArtifactIdAndUserId(
-            	        ratingRequest.getArtifactId(), user.getUserId());
-            UserArtifact userArtifact;
-            if (existingUserArtifact.isPresent()) {
-                userArtifact = existingUserArtifact.get();
-            } else {
-                UserArtifact newUA = new UserArtifact();
-                newUA.setArtifactId(ratingRequest.getArtifactId());
-                newUA.setUserId(user.getUserId());
-                userArtifact = userArtifactRepository.save(newUA);
+            // Step 3: Find any userArtifact record for this artifact
+            Optional<UserArtifact> anyUserArtifact = userArtifactRepository
+                    .findFirstByArtifactId(ratingRequest.getArtifactId()); // custom method
+
+            if (anyUserArtifact.isEmpty()) {
+                return ResponseEntity.status(404)
+                        .body(Map.of("error", "Artifact not found (no userArtifact record)"));
             }
 
-            // Check if user already rated this artifact
-            Optional<Rating> existingRating = ratingRepository.findByUserIdAndUserArtifact_ArtifactId(
-                user.getUserId(), 
-                ratingRequest.getArtifactId()
-            );
+            UserArtifact artifactLink = anyUserArtifact.get();
+
+            // Step 4: Check if this user already rated it
+            Optional<Rating> existingRating = ratingRepository
+                    .findByUserIdAndUserArtifact_ArtifactId(
+                            user.getUserId(),
+                            ratingRequest.getArtifactId());
 
             Rating rating;
             if (existingRating.isPresent()) {
-                // Update existing rating
                 rating = existingRating.get();
                 rating.setRatingValue(ratingRequest.getRatingValue());
                 rating.setRatedAt(LocalDateTime.now());
             } else {
-                // Create new rating
                 rating = new Rating();
                 rating.setUserId(user.getUserId());
-                rating.setUserArtifact(userArtifact);
+                rating.setUserArtifact(artifactLink); // ✅ Link to existing userArtifact
                 rating.setRatingValue(ratingRequest.getRatingValue());
             }
 
             ratingRepository.save(rating);
 
-            // Fetch the artifact to be updated
+            // Step 5: Recalculate and update Mongo artifact's summary fields
             Optional<Artifact> optionalArtifact = artifactRepository.findById(ratingRequest.getArtifactId());
             if (optionalArtifact.isPresent()) {
                 Artifact artifact = optionalArtifact.get();
-
-                // Recalculate average and total ratings
                 Double averageRating = ratingRepository.findAverageRatingByArtifactId(ratingRequest.getArtifactId());
                 Long totalRatings = ratingRepository.countByArtifactId(ratingRequest.getArtifactId());
 
-                // Update the artifact entity
                 artifact.setAverageRating(averageRating);
                 artifact.setTotalRatings(totalRatings);
                 artifactRepository.save(artifact);
             }
 
-
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("averageRating", optionalArtifact.isPresent() ? optionalArtifact.get().getAverageRating() : 0.0);
-            response.put("totalRatings", optionalArtifact.isPresent() ? optionalArtifact.get().getTotalRatings() : 0);
+            response.put("averageRating", optionalArtifact.map(Artifact::getAverageRating).orElse(0.0));
+            response.put("totalRatings", optionalArtifact.map(Artifact::getTotalRatings).orElse(0));
             response.put("userRating", ratingRequest.getRatingValue());
 
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            // Log the exception for debugging
             e.printStackTrace();
             return ResponseEntity.status(500)
                     .body(Map.of("error", "Failed to submit rating"));
         }
     }
+
 
     @DeleteMapping("/{artifactId}")
     public ResponseEntity<?> removeRating(@PathVariable String artifactId, HttpSession session) {

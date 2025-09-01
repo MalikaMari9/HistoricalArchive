@@ -283,11 +283,8 @@ export default function ArtworkDetail() {
   const [isBookmarkLoading, setIsBookmarkLoading] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
 
-  // Update the useEffect hook that loads artwork data
-useEffect(() => {
-  if (!_id) return;
 
-  const loadArtworkData = async () => {
+    const loadArtworkData = async () => {
     try {
       setIsLoading(true);
 
@@ -377,6 +374,11 @@ if (currentUser?.userId && normalizedArtwork?.uploaded_by) {
       setIsLoadingStatus(false);
     }
   };
+
+  // Update the useEffect hook that loads artwork data
+useEffect(() => {
+  if (!_id) return;
+
 
   loadArtworkData();
 }, [_id, toast, currentUser?.userId, currentUser?.role]);
@@ -492,6 +494,7 @@ if (currentUser?.userId && normalizedArtwork?.uploaded_by) {
           title: "Success",
           description: "Rating submitted successfully",
         });
+          await loadArtworkData();
       }
     } catch (error) {
       console.error("Error submitting rating:", error);

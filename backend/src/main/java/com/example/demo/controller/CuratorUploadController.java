@@ -160,7 +160,7 @@ public class CuratorUploadController {
                  Notification n = new Notification();
                  n.setRecipient(prof);
                  n.setSource(loggedInUser);
-                 n.setRelatedId(String.valueOf(savedUA.getUserArtifactId())); // submission id
+                 n.setRelatedId(String.valueOf(savedUA.getArtifactId())); // submission id
                  n.setRelatedType("artifact_submission");
                  n.setNotificationType(isNew ? "ARTIFACT_SUBMITTED" : "ARTIFACT_RESUBMITTED");
                  n.setMessage(loggedInUser.getUsername() + (isNew ? " submitted" : " resubmitted") + " an artifact for review.");
@@ -375,7 +375,7 @@ public class CuratorUploadController {
                         Notification n = new Notification();
                         n.setRecipient(prof);
                         n.setSource(user);
-                        n.setRelatedId(String.valueOf(ua.getUserArtifactId()));
+                        n.setRelatedId(String.valueOf(ua.getArtifactId()));
                         n.setRelatedType("artifact_submission");
                         n.setNotificationType("ARTIFACT_RESUBMITTED");
                         n.setMessage(user.getUsername() + " resubmitted an updated artifact for review.");

@@ -5,6 +5,7 @@ import com.example.demo.entity.User;
 import com.example.demo.repository.NotificationRepository;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -63,6 +64,7 @@ public class NotificationController {
         notificationRepo.save(noti);
     }
 
+    @Transactional
     @PutMapping("/mark-all-read")
     public void markAllAsRead(HttpSession session) {
         User user = (User) session.getAttribute("loggedInUser");

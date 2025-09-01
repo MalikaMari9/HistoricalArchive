@@ -81,6 +81,8 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 
 		List<UserArtifact> findAllByOrderBySavedAtDesc();
 
+		Optional<UserArtifact> findFirstByArtifactId(String artifactId);
+
 }
 
 
