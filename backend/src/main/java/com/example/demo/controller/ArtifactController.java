@@ -263,16 +263,22 @@ public class ArtifactController {
 
         // Step 3: Optional search filter
         List<ArtifactDTO> allDto = artifacts.stream()
-            .filter(artifact -> {
-                if (search == null || search.trim().isEmpty()) return true;
-                return artifact.getTitle().toLowerCase().contains(search.toLowerCase());
-            })
-            .map(artifact -> {
-                ArtifactDTO dto = convertToDTO(artifact);
-                dto.setStatus(uaMap.get(artifact.getId()).getStatus().name());
-                return dto;
-            })
-            .toList();
+        	    .filter(artifact -> {
+        	        if (search == null || search.trim().isEmpty()) return true;
+        	        return artifact.getTitle().toLowerCase().contains(search.toLowerCase());
+        	    })
+        	    .map(artifact -> {
+        	        ArtifactDTO dto = convertToDTO(artifact);
+        	        dto.setStatus(uaMap.get(artifact.getId()).getStatus().name());
+        	        return dto;
+        	    })
+        	    .sorted((a1, a2) -> {
+        	        Instant t1 = Optional.ofNullable(a1.getUpdated_at()).orElse(a1.getUploaded_at());
+        	        Instant t2 = Optional.ofNullable(a2.getUpdated_at()).orElse(a2.getUploaded_at());
+        	        return t2.compareTo(t1); // Descending: newest first
+        	    })
+        	    .toList();
+
 
         // Step 4: Manual pagination
         int start = page * size;

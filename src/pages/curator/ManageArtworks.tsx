@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,17 @@ type AppStatus = "pending" | "accepted" | "rejected";
 export const ManageArtworks = () => {
   const { user, ready } = useAuthGuard();
   const navigate = useNavigate();
+  const location = useLocation();
+
+
+  useEffect(() => {
+  if (location.state?.reload) {
+    // Force full refresh
+    setPage(0); // optional: reset to first page
+    setSearchTerm(""); // optional: clear search
+    setStatusFilter("all"); // optional: clear filters
+  }
+}, [location.state]);
 
   useEffect(() => {
     if (ready && user?.role !== "curator") {
@@ -66,6 +78,7 @@ export const ManageArtworks = () => {
     rejected: 0,
   });
 
+  
   // Debounce search input
   useEffect(() => {
     const handler = setTimeout(() => {

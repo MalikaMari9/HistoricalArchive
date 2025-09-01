@@ -33,6 +33,9 @@ public class UserArtifact {
     
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
+    
+    @Column(name = "last_updated_at")
+    private Instant lastUpdatedAt;
 
 
     // Getters and Setters
@@ -100,5 +103,12 @@ public class UserArtifact {
 		this.reviewedAt = reviewedAt;
 	}
     
+	public Instant getLastUpdatedAt() {
+	    return lastUpdatedAt;
+	}
+
+	public void setLastUpdatedAt(Instant lastUpdatedAt) {
+	    this.lastUpdatedAt = lastUpdatedAt;
+	}
     
 }

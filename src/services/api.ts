@@ -1000,12 +1000,13 @@ export const deleteArtifact = async (id: string): Promise<void> => {
 
 /** Update an artwork (full or partial) */
 export const updateArtifactMultipart = async (id: string, form: FormData) => {
-   const res = await api.put(`/artifacts/${id}`, form, {
-     headers: { "Content-Type": "multipart/form-data" },
-     withCredentials: true,
-   });
-   return res.data;
- };
+  const res = await api.put(`/update-artifact/${id}`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    withCredentials: true,
+  });
+  return res.data;
+};
+
 
 
 

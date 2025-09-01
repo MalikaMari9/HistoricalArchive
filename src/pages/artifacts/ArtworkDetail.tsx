@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/components/ui/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import axios from "axios";
 import {
   ArrowLeft,
   Bookmark,
@@ -319,37 +320,51 @@ useEffect(() => {
       }
 
       // Load artifact status - different logic for professors vs regular users
-      if (currentUser?.userId) {
-        // For professors, get the general artifact status
-        if (currentUser?.role === 'professor') {
-          try {
-            const artifactStatuses = await getArtifactStatus(_id);
-            if (artifactStatuses.length > 0) {
-              const firstStatus = artifactStatuses[0];
-              setArtwork(prev => prev ? {
+// Load artifact status
+if (currentUser?.userId && normalizedArtwork?.uploaded_by) {
+  const isOwner =
+    currentUser.role === "curator" &&
+    (currentUser.username === normalizedArtwork.uploaded_by);
+
+  try {
+    if (isOwner) {
+      // Only the artifact owner can use the user-specific status API
+      const userArtifactStatus = await getUserArtifactStatus(_id, currentUser.userId);
+      if (userArtifactStatus) {
+        setArtwork((prev) =>
+          prev
+            ? {
                 ...prev,
-                status: (firstStatus.status?.toLowerCase() as AppStatus) || 'pending'
-              } : prev);
-            }
-          } catch (err) {
-            console.error("Error loading artifact status for professor:", err);
-          }
-        } 
-        // For regular users (artifact owners), get their specific user artifact status
-        else {
-          try {
-            const userArtifactStatus = await getUserArtifactStatus(_id, currentUser.userId);
-            if (userArtifactStatus) {
-              setArtwork(prev => prev ? {
-                ...prev,
-                status: (userArtifactStatus.toLowerCase() as AppStatus) || 'pending'
-              } : prev);
-            }
-          } catch (error) {
-            console.error("Error loading user artifact status:", error);
-          }
-        }
+                status: (userArtifactStatus.toLowerCase() as AppStatus) || "pending",
+              }
+            : prev
+        );
       }
+    } else if (currentUser.role === "professor") {
+      // Professors see artifact-level status
+      const artifactStatuses = await getArtifactStatus(_id);
+      if (artifactStatuses.length > 0) {
+        const firstStatus = artifactStatuses[0];
+        setArtwork((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: (firstStatus.status?.toLowerCase() as AppStatus) || "pending",
+              }
+            : prev
+        );
+      }
+    }
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      console.warn("User has no status record for this artifact.");
+    } else {
+      console.error("Error loading artifact status:", err);
+    }
+  }
+}
+
+
     } catch (err) {
       console.error("Error loading artwork detail:", err);
       toast({
@@ -874,20 +889,17 @@ useEffect(() => {
           {/* Left: media + description + comments */}
           <div className="lg:col-span-2">
             <Card className="overflow-hidden">
-              <div className="aspect-[4/3] relative">
-                <img
-                  src={mainImage}
-                  alt={
-                    artwork.images?.[selectedImageIndex]?.alttext ||
-                    artwork.title
-                  }
-                  className="w-full h-full object-cover"
-                  onError={(e) =>
-                    ((e.target as HTMLImageElement).src =
-                      "/placeholder-art.jpg")
-                  }
-                />
-              </div>
+<div className="aspect-[4/3] relative bg-muted flex items-center justify-center">
+  <img
+    src={mainImage}
+    alt={artwork.images?.[selectedImageIndex]?.alttext || artwork.title}
+    className="max-w-full max-h-full object-contain"
+    onError={(e) =>
+      ((e.target as HTMLImageElement).src = "/placeholder-art.jpg")
+    }
+  />
+</div>
+
             </Card>
 
             {artwork.images && artwork.images.length > 1 && (

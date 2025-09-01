@@ -339,7 +339,7 @@ const onSubmit = async (values: FormValues) => {
     await updateArtifactMultipart(id, form);
 
     toast({ title: "Success", description: "Artwork updated successfully" });
-    navigate("/curator/artworks");
+    navigate("/curator/artworks", { state: { reload: true } })
   } catch (err) {
     console.error(err);
     toast({
