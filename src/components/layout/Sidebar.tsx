@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+
 import {
-  User, Edit3, Lock, Heart, LogOut, Users,
-  CheckCircle, BarChart, Upload, GraduationCap, X, Image, Info, Mail
+  User, Edit3, Lock, Bookmark, LogOut, Users, UserCheck, UserCog, CheckCircle, Image, Heart,
+  Upload, Clock, Brush, Palette, Megaphone, BarChart, MailCheck,
+  ClipboardCheck, FileSearch, Info, Mail, GraduationCap, X
 } from 'lucide-react';
+
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -107,7 +110,8 @@ export const Sidebar = ({
                     onClick={handleItemClick}
                     className="text-muted-foreground capitalize hover:text-primary transition-colors underline-offset-2 hover:underline"
                   >
-                    {userRole}
+                    {userRole} dashboard
+
                   </Link>
                 </div>
               </div>
@@ -126,7 +130,7 @@ export const Sidebar = ({
                     <Link to="/profile/edit" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Edit3 className="icon" /><span>Edit Profile</span></Link>
                     <Link to="/change-password" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Lock className="icon" /><span>Change Password</span></Link>
                     {userRole !== 'admin' && (
-                      <Link to="/bookmarks" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Heart className="icon" /><span>Bookmark</span></Link>
+                      <Link to="/bookmarks" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Bookmark className="icon" /><span>Bookmark</span></Link>
                     )}
                   </div>
                 </div>
@@ -145,7 +149,7 @@ export const Sidebar = ({
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">CURATOR</h3>
                     <Link to="/curator/upload" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Upload className="icon" /><span>Upload Art</span></Link>
-                    <Link to="/curator/artworks" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Upload className="icon" /><span>Upload History</span></Link>
+                    <Link to="/curator/artworks" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Clock className="icon" /><span>Upload History</span></Link>
                   </div>
                 )}
 
@@ -153,8 +157,8 @@ export const Sidebar = ({
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">PROFESSOR</h3>
                     <Link to="/professor/review" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Review Arts</span></Link>
-                    <Link to="/professor/curator-applications" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Review Curators</span></Link>
-                    <Link to="/professor/recent-decisions" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Professor Audit</span></Link>
+                    <Link to="/professor/curator-applications" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><UserCheck className="icon" /><span>Review Curators</span></Link>
+                    <Link to="/professor/recent-decisions" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><FileSearch className="icon" /><span>Professor Audit</span></Link>
                     
                   </div>
                 )}
@@ -163,9 +167,9 @@ export const Sidebar = ({
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">ADMIN</h3>
                     <Link to="/admin/users" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Users className="icon" /><span>Manage Users</span></Link>
-                    <Link to="/admin/artworks" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Manage Artworks</span></Link>
+                    <Link to="/admin/artworks" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Brush className="icon" /><span>Manage Artworks</span></Link>
                     <Link to="/admin/announcements" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Image className="icon" /><span>Manage Announcement</span></Link>
-                    <Link to="/admin/reports" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><BarChart className="icon" /><span>Reports</span></Link>
+                    <Link to="/admin/inbox" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><Mail className="icon" /><span>Inbox</span></Link>
                   </div>
                 )}
 

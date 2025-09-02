@@ -41,6 +41,7 @@ import WatchedLater from "./pages/WatchedLater";
 import MakeAnnouncement from "./pages/admin/MakeAnnoucement";
 import ManageAnnouncements from "./pages/admin/ManageAnnouncements";
 import ManageUsers from "./pages/admin/ManageUsers";
+import AdminContactInbox from "./pages/admin/AdminInbox";
 // import ReviewArts from "./pages/admin/ReviewArts";
 import { ManageArtworks as AdminManageArtworks } from "./pages/admin/AdminManageArtworks";
 import AdminDashboard from "./pages/dashboard/AdminDashboard";
@@ -110,6 +111,7 @@ const App = () => (
               <Route index element={<AdminDashboard />} />
               <Route path="users" element={<ManageUsers />} />
               <Route path="artworks" element={<AdminManageArtworks />} />
+              <Route path="inbox" element={<AdminContactInbox />} />
               {/* Review arts removed */}
               <Route path="announcements" element={<ManageAnnouncements />} />
               <Route path="announcements/new" element={<MakeAnnouncement />} />

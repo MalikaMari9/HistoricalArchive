@@ -320,6 +320,7 @@ export interface AdminArtworkDto {
   uploaded_by?: string;
   uploaded_at?: string;
   image_url?: string;
+  status?: string;
 }
 
 export interface PageResponse<T> {
@@ -330,15 +331,19 @@ export interface PageResponse<T> {
   size: number; // page size
 }
 
+// services/api.ts (or wherever adminListArtworks lives)
 export const adminListArtworks = async (
   page = 0,
-  size = 10
+  size = 10,
+  opts?: { q?: string; signal?: AbortSignal }
 ): Promise<PageResponse<AdminArtworkDto>> => {
   const res = await api.get<PageResponse<AdminArtworkDto>>("/admin/artworks", {
-    params: { page, size },
+    params: { page, size, q: opts?.q || undefined },
+    signal: opts?.signal as any,
   });
   return res.data;
 };
+
 
 export const adminDeleteArtwork = async (id: string): Promise<void> => {
   await api.delete(`/admin/artworks/${id}`);
@@ -1482,4 +1487,65 @@ export const markNotificationRead = async (id: number): Promise<void> => {
   await api.put(`/notifications/${id}/read`, undefined, {
     withCredentials: true,
   });
+};
+
+
+/* ------------------------------ Admin: Contact Inbox ------------------------------ */
+
+export interface AdminContactMessage {
+  id: number;
+  email: string;
+  subject: string;
+  content: string;
+  createdAt: string; // ISO
+  isDeleted: boolean;
+}
+
+export const adminListContactMessages = async (
+  page = 0,
+  size = 10,
+  opts?: { includeDeleted?: boolean; signal?: AbortSignal }
+): Promise<PageResponse<AdminContactMessage>> => {
+  const res = await api.get<PageResponse<AdminContactMessage>>("/admin/contact", {
+    params: {
+      page,
+      size,
+      includeDeleted: opts?.includeDeleted ?? false,
+    },
+    signal: opts?.signal as any,
+  });
+  return res.data;
+};
+
+export const adminGetContactMessage = async (
+  id: number
+): Promise<AdminContactMessage> => {
+  const res = await api.get<AdminContactMessage>(`/admin/contact/${id}`);
+  return res.data;
+};
+
+export const adminSoftDeleteContact = async (
+  id: number
+): Promise<void> => {
+  await api.patch(`/admin/contact/${id}/delete`);
+};
+
+export const adminRestoreContact = async (
+  id: number
+): Promise<void> => {
+  await api.patch(`/admin/contact/${id}/restore`);
+};
+
+export const adminHardDeleteContact = async (
+  id: number
+): Promise<void> => {
+  await api.delete(`/admin/contact/${id}`);
+};
+
+export const submitContactForm = async (payload: {
+  email: string;
+  subject: string;
+  content: string;
+}): Promise<void> => {
+  await api.post("/contact", payload);
 };

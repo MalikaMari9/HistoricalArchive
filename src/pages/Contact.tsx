@@ -1,44 +1,74 @@
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Mail, Phone, MapPin, Send } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { submitContactForm } from "@/services/api";
 
 export default function Contact() {
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    subject: '',
-    message: ''
+    name: "",
+    email: "",
+    subject: "",
+    message: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [company, setCompany] = useState(""); // honeypot
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Simulate form submission
-    toast({
-      title: "Message Sent!",
-      description: "Thank you for contacting us. We'll get back to you soon.",
-    });
-    
-    // Reset form
-    setFormData({
-      name: '',
-      email: '',
-      subject: '',
-      message: ''
-    });
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Honeypot check (bots will often fill this)
+    if (company.trim().length > 0) {
+      // Silently succeed (or you can toast a generic message)
+      setFormData({ name: "", email: "", subject: "", message: "" });
+      return;
+    }
+
+    const email = formData.email.trim();
+    const subject = formData.subject.trim();
+    const content = formData.message.trim();
+
+    if (!email || !subject || !content) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill email, subject, and message.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await submitContactForm({ email, subject, content });
+
+      toast({
+        title: "Message Sent!",
+        description: "Thank you for contacting us. We'll get back to you soon.",
+      });
+
+      setFormData({ name: "", email: "", subject: "", message: "" });
+    } catch (err) {
+      console.error("Contact form error:", err);
+      toast({
+        title: "Submission Failed",
+        description:
+          "There was an issue sending your message. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -50,8 +80,8 @@ export default function Contact() {
             Get In Touch
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Have questions about our collection? Want to contribute as a curator? 
-            We'd love to hear from you.
+            Have questions about our collection? Want to contribute as a
+            curator? We&apos;d love to hear from you.
           </p>
         </div>
 
@@ -60,7 +90,9 @@ export default function Contact() {
           <div className="lg:col-span-1">
             <Card className="h-full">
               <CardHeader>
-                <CardTitle className="text-2xl text-foreground">Contact Information</CardTitle>
+                <CardTitle className="text-2xl text-foreground">
+                  Contact Information
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-start space-x-4">
@@ -69,8 +101,12 @@ export default function Contact() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-foreground">Email</h3>
-                    <p className="text-muted-foreground">info@historicalarchive.org</p>
-                    <p className="text-muted-foreground">curator@historicalarchive.org</p>
+                    <p className="text-muted-foreground">
+                      info@historicalarchive.org
+                    </p>
+                    <p className="text-muted-foreground">
+                      curator@historicalarchive.org
+                    </p>
                   </div>
                 </div>
 
@@ -92,15 +128,19 @@ export default function Contact() {
                   <div>
                     <h3 className="font-semibold text-foreground">Address</h3>
                     <p className="text-muted-foreground">
-                      123 Heritage Lane<br />
-                      Museum District<br />
+                      123 Heritage Lane
+                      <br />
+                      Museum District
+                      <br />
                       New York, NY 10001
                     </p>
                   </div>
                 </div>
 
                 <div className="pt-6">
-                  <h3 className="font-semibold text-foreground mb-3">Office Hours</h3>
+                  <h3 className="font-semibold text-foreground mb-3">
+                    Office Hours
+                  </h3>
                   <div className="space-y-2 text-sm text-muted-foreground">
                     <div className="flex justify-between">
                       <span>Monday - Friday</span>
@@ -124,10 +164,24 @@ export default function Contact() {
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl text-foreground">Send us a Message</CardTitle>
+                <CardTitle className="text-2xl text-foreground">
+                  Send us a Message
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* Honeypot (hidden) */}
+                  <input
+                    type="text"
+                    name="company"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    className="hidden"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    aria-hidden="true"
+                  />
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="name">Full Name</Label>
@@ -137,7 +191,6 @@ export default function Contact() {
                         value={formData.name}
                         onChange={handleChange}
                         placeholder="Enter your full name"
-                        required
                       />
                     </div>
                     <div className="space-y-2">
@@ -179,9 +232,14 @@ export default function Contact() {
                     />
                   </div>
 
-                  <Button type="submit" className="w-full md:w-auto" size="lg">
+                  <Button
+                    type="submit"
+                    className="w-full md:w-auto"
+                    size="lg"
+                    disabled={isSubmitting}
+                  >
                     <Send className="h-4 w-4 mr-2" />
-                    Send Message
+                    {isSubmitting ? "Sending..." : "Send Message"}
                   </Button>
                 </form>
               </CardContent>
@@ -194,7 +252,7 @@ export default function Contact() {
           <h2 className="text-3xl font-bold text-center text-foreground mb-12">
             Frequently Asked Questions
           </h2>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
               <CardContent className="p-6">
@@ -202,8 +260,10 @@ export default function Contact() {
                   How can I become a curator?
                 </h3>
                 <p className="text-muted-foreground">
-                  Sign up for an account and look for the "Upgrade to Curator" option in your profile menu. 
-                  You'll need to provide credentials and have your application reviewed by our team.
+                  Sign up for an account and look for the &quot;Upgrade to
+                  Curator&quot; option in your profile menu. You&apos;ll need
+                  to provide credentials and have your application reviewed by
+                  our team.
                 </p>
               </CardContent>
             </Card>
@@ -214,8 +274,9 @@ export default function Contact() {
                   Can I download high-resolution images?
                 </h3>
                 <p className="text-muted-foreground">
-                  High-resolution downloads are available for educational and research purposes. 
-                  Please contact us with details about your intended use.
+                  High-resolution downloads are available for educational and
+                  research purposes. Please contact us with details about your
+                  intended use.
                 </p>
               </CardContent>
             </Card>
@@ -226,8 +287,9 @@ export default function Contact() {
                   How are artworks authenticated?
                 </h3>
                 <p className="text-muted-foreground">
-                  All submissions undergo rigorous review by our team of art historians and professors 
-                  before being approved for public display.
+                  All submissions undergo rigorous review by our team of art
+                  historians and professors before being approved for public
+                  display.
                 </p>
               </CardContent>
             </Card>
@@ -238,8 +300,8 @@ export default function Contact() {
                   Is the platform free to use?
                 </h3>
                 <p className="text-muted-foreground">
-                  Yes! Viewing and rating artworks is completely free. Some advanced features 
-                  may require curator or institutional access.
+                  Yes! Viewing and rating artworks is completely free. Some
+                  advanced features may require curator or institutional access.
                 </p>
               </CardContent>
             </Card>
