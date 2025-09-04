@@ -2,10 +2,14 @@ package com.example.demo.repository;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -21,11 +25,12 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
 
     private final MongoTemplate mongoTemplate;
     private final UserArtifactRepository userArtifactRepository;
+    private final RatingRepository ratingRepository;
 
-    @Autowired
-    public CustomArtifactRepositoryImpl(MongoTemplate mongoTemplate, UserArtifactRepository userArtifactRepository) {
+    public CustomArtifactRepositoryImpl(MongoTemplate mongoTemplate, UserArtifactRepository userArtifactRepository, RatingRepository ratingRepository) {
         this.mongoTemplate = mongoTemplate;
         this.userArtifactRepository = userArtifactRepository;
+        this.ratingRepository = ratingRepository;
     }
 
     @Override
@@ -33,7 +38,7 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
                                           String department, String period, String medium, String artistName,
                                           String tags, LocalDate fromDate, LocalDate toDate,
                                           String locationQuery, Double latitude, Double longitude, Double radius,
-                                          String city, String country, Pageable pageable) {
+                                          String city, String country, String sortBy, Pageable pageable) {
         Query query = new Query().with(pageable);
         List<Criteria> specificFieldCriteria = new ArrayList<>();
         
@@ -160,12 +165,78 @@ public class CustomArtifactRepositoryImpl implements CustomArtifactRepository {
             query.addCriteria(statusFilterCriteria);
         }
 
-        List<Artifact> artifacts = mongoTemplate.find(query, Artifact.class);
-        return PageableExecutionUtils.getPage(
-                artifacts,
-                pageable,
-                () -> mongoTemplate.count(Query.of(query).limit(-1).skip(-1), Artifact.class)
-        );
+        // Get all artifacts first without pagination for sorting
+        Query countQuery = Query.of(query).limit(-1).skip(-1);
+        long totalCount = mongoTemplate.count(countQuery, Artifact.class);
+        
+        // Get all artifacts for sorting (we'll paginate after sorting)
+        Query allQuery = Query.of(query).limit(-1).skip(-1);
+        List<Artifact> allArtifacts = mongoTemplate.find(allQuery, Artifact.class);
+        
+        // Apply sorting if specified
+        List<Artifact> sortedArtifacts = applySorting(allArtifacts, sortBy);
+        
+        // Manual pagination after sorting
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), sortedArtifacts.size());
+        List<Artifact> paginatedArtifacts = start >= sortedArtifacts.size() ? 
+            new ArrayList<>() : 
+            sortedArtifacts.subList(start, end);
+            
+        return new PageImpl<>(paginatedArtifacts, pageable, totalCount);
+    }
+    
+    private List<Artifact> applySorting(List<Artifact> artifacts, String sortBy) {
+        if (sortBy == null || sortBy.isEmpty() || "best_match".equals(sortBy)) {
+            // Default order - no additional sorting needed
+            return artifacts;
+        }
+        
+        switch (sortBy.toLowerCase()) {
+            case "ascending":
+                return artifacts.stream()
+                    .sorted(Comparator.comparing(artifact -> 
+                        artifact.getTitle() != null ? artifact.getTitle().toLowerCase() : ""))
+                    .collect(Collectors.toList());
+                    
+            case "descending":
+                return artifacts.stream()
+                    .sorted(Comparator.comparing((Artifact artifact) -> 
+                        artifact.getTitle() != null ? artifact.getTitle().toLowerCase() : "").reversed())
+                    .collect(Collectors.toList());
+                    
+            case "most_few": // Most favorite (highest rating first)
+                return sortByRating(artifacts, false);
+                
+            case "least_few": // Least favorite (lowest rating first)
+                return sortByRating(artifacts, true);
+                
+            default:
+                System.out.println("⚠️ Unknown sort option: " + sortBy + ", using default order");
+                return artifacts;
+        }
+    }
+    
+    private List<Artifact> sortByRating(List<Artifact> artifacts, boolean ascending) {
+        // Get average ratings for all artifacts
+        Map<String, Double> ratingMap = new HashMap<>();
+        
+        for (Artifact artifact : artifacts) {
+            Double avgRating = ratingRepository.findAverageRatingByArtifactId(artifact.getId());
+            ratingMap.put(artifact.getId(), avgRating != null ? avgRating : 0.0);
+        }
+        
+        // Sort by rating
+        Comparator<Artifact> ratingComparator = Comparator.comparing(artifact -> 
+            ratingMap.getOrDefault(artifact.getId(), 0.0));
+            
+        if (!ascending) {
+            ratingComparator = ratingComparator.reversed();
+        }
+        
+        return artifacts.stream()
+            .sorted(ratingComparator)
+            .collect(Collectors.toList());
     }
     
     @Override

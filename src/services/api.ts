@@ -167,6 +167,7 @@ export interface AdminUser {
   role: "admin" | "professor" | "curator" | "visitor";
   createdAt?: string;
   restricted?: boolean;
+  curatorApplicationStatus?: "pending" | "accepted" | "rejected" | null;
 }
 
 export const adminListUsers = async (): Promise<AdminUser[]> => {
@@ -313,11 +314,6 @@ export const fetchTopArtworks = async (): Promise<
 /*                          ARTWORKS MANAGEMENT (Admin)                       */
 /* -------------------------------------------------------------------------- */
 
-
-/* -------------------------------------------------------------------------- */
-/*                          ARTWORKS MANAGEMENT (Admin)                       */
-/* -------------------------------------------------------------------------- */
-
 export interface AdminArtworkDto {
   _id: string;
   title: string;
@@ -345,7 +341,6 @@ export interface AdminArtworkDto {
   status?: string;
 }
 
-
 export interface PageResponse<T> {
   content: T[];
   totalElements: number;
@@ -354,15 +349,43 @@ export interface PageResponse<T> {
   size: number; // page size
 }
 
-export const adminListAllArtworks = async (
-  opts?: { signal?: AbortSignal }
-): Promise<AdminArtworkDto[]> => {
+export const adminListAllArtworks = async (opts?: {
+  signal?: AbortSignal;
+}): Promise<AdminArtworkDto[]> => {
   const res = await api.get<AdminArtworkDto[]>("/admin/artworks/all", {
     signal: opts?.signal as any,
   });
   return res.data;
 };
 
+// New paginated version with search and status filtering
+export const adminListArtworksPaginated = async (
+  page: number = 0,
+  size: number = 10,
+  opts?: {
+    signal?: AbortSignal;
+    q?: string;
+    status?: string;
+  }
+): Promise<{ content: AdminArtworkDto[]; total: number }> => {
+  const params: any = { page, size };
+  if (opts?.q) params.q = opts.q;
+  if (opts?.status) params.status = opts.status;
+
+  const res = await api.get<AdminArtworkDto[]>("/admin/artworks", {
+    params,
+    signal: opts?.signal as any,
+  });
+
+  const total = parseInt(
+    (res.headers["x-total-count"] ??
+      res.headers["X-Total-Count"] ??
+      "0") as string,
+    10
+  );
+
+  return { content: res.data, total };
+};
 
 // services/api.ts (or wherever adminListArtworks lives)
 export const adminListArtworks = async (
@@ -380,7 +403,6 @@ export const adminListArtworks = async (
 export const adminDeleteArtwork = async (id: string): Promise<void> => {
   await api.delete(`/admin/artworks/${id}`);
 };
-
 /* -------------------------------------------------------------------------- */
 /*                             SUGGESTION ENDPOINTS                            */
 /* -------------------------------------------------------------------------- */
@@ -472,6 +494,7 @@ export interface SearchFilters {
   country?: string;
   page?: number;
   size?: number;
+  sortBy?: string;
 }
 
 /** Global keyword-based search */
@@ -502,6 +525,8 @@ export const searchArts = async (
       radius: filters.radius || undefined,
       city: filters.city || undefined,
       country: filters.country || undefined,
+      // Sorting parameter
+      sortBy: filters.sortBy || undefined,
     };
 
     console.log("🔎 searchArts() calling /artifacts with params:", params);
@@ -518,7 +543,7 @@ export const searchArts = async (
 
 /** Detailed/filtered search */
 export const searchDetailedArts = async (
-  filters: Omit<SearchFilters, "sortBy"> & { page?: number; size?: number }
+  filters: SearchFilters & { page?: number; size?: number }
 ): Promise<ArtifactResponse> => {
   try {
     const params = {
@@ -540,6 +565,8 @@ export const searchDetailedArts = async (
       radius: filters.radius || undefined,
       city: filters.city || undefined,
       country: filters.country || undefined,
+      // Sorting parameter
+      sortBy: filters.sortBy || undefined,
       page: filters.page ?? 0,
       size: filters.size ?? 6,
     };
@@ -600,6 +627,7 @@ export async function isBookmarked(artifactId: string) {
   if (!res.ok) throw new Error("Failed to check bookmark");
   return res.json() as Promise<boolean>;
 }
+
 
 /* -------------------------------------------------------------------------- */
 /*                            ANNOUNCEMENTS MANAGEMENT                        */
@@ -681,6 +709,7 @@ export const countAnnouncements = async (): Promise<number> => {
   const res = await api.get<{ count: number }>("/announcements/count");
   return res.data.count;
 };
+
 
 /* ----------------------------- Artifacts/Detail ---------------------------- */
 
@@ -1233,6 +1262,15 @@ export const professorListAllArtifacts = async (
   return res.data;
 };
 
+export const getCuratorEmailByApplicationId = async (
+  applicationId: number
+): Promise<string> => {
+  const res = await api.get<string>(
+    `/professor/dashboard/curator-email/${applicationId}`
+  );
+  return res.data;
+};
+
 
 /* ----------------------- Professor: Curator Applications ----------------------- */
 
@@ -1264,6 +1302,7 @@ export const getCuratorApplicationStatus = async (): Promise<
 > => {
   const res = await api.get("/curator/status", { withCredentials: true });
   return res.data;
+
 };
 
 export const professorListPendingCuratorsApplication = async (opts?: {
@@ -1275,6 +1314,7 @@ export const professorListPendingCuratorsApplication = async (opts?: {
       signal: opts?.signal as any,
     }
   );
+  
   return res.data;
 };
 
@@ -1570,18 +1610,20 @@ export interface AdminContactMessage {
 export const adminListContactMessages = async (
   page = 0,
   size = 10,
-  opts?: { includeDeleted?: boolean; signal?: AbortSignal }
+  opts?: { includeDeleted?: boolean; deletedOnly?: boolean; signal?: AbortSignal }
 ): Promise<PageResponse<AdminContactMessage>> => {
   const res = await api.get<PageResponse<AdminContactMessage>>("/admin/contact", {
     params: {
       page,
       size,
       includeDeleted: opts?.includeDeleted ?? false,
+      deletedOnly: opts?.deletedOnly ?? false,
     },
     signal: opts?.signal as any,
   });
   return res.data;
 };
+
 
 export const adminGetContactMessage = async (
   id: number

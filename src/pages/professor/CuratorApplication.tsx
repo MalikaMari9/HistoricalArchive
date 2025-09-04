@@ -40,6 +40,7 @@ import {
   professorRejectCuratorApp,
   professorFullReviewStats,
   professorListReviewCuratorApplications,
+  getCuratorEmailByApplicationId,
   type ReviewCuratorAppDto,
   type AppStatus, // "pending" | "accepted" | "rejected"
 } from "@/services/api";
@@ -60,6 +61,7 @@ export default function CuratorApplications() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
+const [emailMap, setEmailMap] = useState<Record<number, string>>({});
 
   // Per-tab paging/data
   const [pageByStatus, setPageByStatus] = useState<Record<AppStatus, number>>({
@@ -360,20 +362,29 @@ export default function CuratorApplications() {
               </TableCell>
 
               {/* View details */}
-              <TableCell>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelected(app);
-                    setDetailsOpen(true);
-                  }}
-                >
-                  <Eye className="h-4 w-4 mr-1" />
-                  View Details
-                </Button>
-              </TableCell>
+ <Button
+  variant="ghost"
+  size="sm"
+  onClick={async (e) => {
+    e.stopPropagation();
+    setSelected(app);
+    setDetailsOpen(true);
+
+    // ✅ Fetch email only if not already loaded
+    if (!emailMap[app.applicationId]) {
+      try {
+        const email = await getCuratorEmailByApplicationId(app.applicationId);
+        setEmailMap((prev) => ({ ...prev, [app.applicationId]: email }));
+      } catch (e) {
+        console.warn("Failed to fetch email", e);
+      }
+    }
+  }}
+>
+  <Eye className="h-4 w-4 mr-1" />
+  View Details
+</Button>
+
 
               {/* Kebab actions (pending only) */}
               <TableCell>
@@ -553,7 +564,10 @@ export default function CuratorApplications() {
                 </div>
                 <div>
                   <h4 className="font-semibold mb-1">Email</h4>
-                  <p className="text-muted-foreground">{selected.email}</p>
+                 <p className="text-muted-foreground">
+  {emailMap[selected.applicationId] ?? selected.email ?? "—"}
+</p>
+
                 </div>
               </div>
 

@@ -218,12 +218,7 @@ export default function SignIn() {
                 )}
               </div>
 
-              {/* Forgot Password */}
-              <div className="flex justify-end">
-                <Link to="/forgot-password" className="text-sm text-primary hover:underline">
-                  Forgot your password?
-                </Link>
-              </div>
+            
 
               {/* Submit */}
               <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
@@ -232,32 +227,7 @@ export default function SignIn() {
             </form>
 
             {/* OAuth */}
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-card text-muted-foreground">
-                    Or continue with
-                  </span>
-                </div>
-              </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <a
-                  href="http://localhost:8080/oauth2/authorization/google"
-                  className="w-full"
-                >
-                  <Button variant="outline" className="w-full" disabled={isLoading}>
-                    Google
-                  </Button>
-                </a>
-                <Button variant="outline" className="w-full" disabled>
-                  Apple
-                </Button>
-              </div>
-            </div>
 
             {/* Footer */}
             <div className="mt-6">

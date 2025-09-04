@@ -4,13 +4,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.springframework.data.domain.PageImpl;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -92,11 +92,12 @@ public class ArtifactController {
             @RequestParam(required = false) Double radius,
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String country,
+            @RequestParam(required = false) String sortBy,
             Pageable pageable) {
 
         Page<Artifact> results = artifactService.searchArtifacts(
             anyField, title, category, culture, department, period, medium, artistName, tags, fromDate, toDate,
-            locationQuery, latitude, longitude, radius, city, country, pageable
+            locationQuery, latitude, longitude, radius, city, country, sortBy, pageable
         );
         System.out.println("🔎 Search Results:");
         System.out.println("  Total Elements: " + results.getTotalElements());
@@ -130,18 +131,20 @@ public class ArtifactController {
             @RequestParam(required = false) Double longitude,
             @RequestParam(required = false) Double radius,
             @RequestParam(required = false) String city,
-            @RequestParam(required = false) String country
+            @RequestParam(required = false) String country,
+            @RequestParam(required = false) String sortBy
     ) {
     	System.out.println("🔎 Global search with query: " + search);
     	System.out.println("🔎 Global search with anyField: " + anyField);
     	System.out.println("🔎 Global search with location: " + locationQuery + ", lat: " + latitude + ", lng: " + longitude);
+    	System.out.println("🔎 Global search with sortBy: " + sortBy);
         Pageable pageable = PageRequest.of(page, size);
         
         // Use the detailed search method instead of simple global search to enable filtering
         Page<Artifact> artifactPage = artifactService.searchArtifacts(
             anyField != null ? anyField : search, // Use anyField if provided, otherwise use search
             title, category, culture, department, period, medium, artistName, tags, 
-            fromDate, toDate, locationQuery, latitude, longitude, radius, city, country, pageable
+            fromDate, toDate, locationQuery, latitude, longitude, radius, city, country, sortBy, pageable
         );
         
         System.out.println("Total results: " + artifactPage.getTotalElements());

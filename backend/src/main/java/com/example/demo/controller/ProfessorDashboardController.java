@@ -291,29 +291,36 @@ public class ProfessorDashboardController {
 
     @GetMapping("/pending-curators")
     public ResponseEntity<List<PendingCuratorDTO>> getPendingCuratorApplications() {
-      
-        List<PendingCuratorDTO> dtoList = curatorApplicationRepository.findByApplicationStatus(ApplicationStatus.pending).stream()
-        	    .sorted((a, b) -> b.getUser().getCreatedAt().compareTo(a.getUser().getCreatedAt()))
-        	    .limit(5)
-        	    .map(app -> new PendingCuratorDTO(
-        	        app.getApplicationId(),
-        	        app.getUser().getUsername(),
-        	        app.getUser().getEmail(),
-        	        app.getFname(),
-        	        app.getDob(),
-        	        app.getEducationalBackground(),
-        	        app.getCertification(),
-        	        app.getCertificationPath(),
-        	        app.getPersonalExperience(),
-        	        app.getPortfolioLink(),
-        	        app.getMotivationReason(),
-        	        app.getUser().getCreatedAt().toLocalDate()
-        	    ))
-        	    .toList();
 
+        List<PendingCuratorDTO> dtoList = curatorApplicationRepository
+            .findByApplicationStatus(ApplicationStatus.pending)
+            .stream()
+            .sorted((a, b) -> b.getUser().getCreatedAt().compareTo(a.getUser().getCreatedAt()))
+            .limit(5)
+            .map(app -> {
+                // ✅ Log the email for debugging
+                System.out.println("📧 Email for application ID " + app.getApplicationId() + ": " + app.getUser().getEmail());
+
+                return new PendingCuratorDTO(
+                    app.getApplicationId(),
+                    app.getUser().getUsername(),
+                    app.getUser().getEmail(), // <-- this is what you're checking
+                    app.getFname(),
+                    app.getDob(),
+                    app.getEducationalBackground(),
+                    app.getCertification(),
+                    app.getCertificationPath(),
+                    app.getPersonalExperience(),
+                    app.getPortfolioLink(),
+                    app.getMotivationReason(),
+                    app.getUser().getCreatedAt().toLocalDate()
+                );
+            })
+            .toList();
 
         return ResponseEntity.ok(dtoList);
     }
+
     
     @GetMapping("/pending-artifacts")
     public ResponseEntity<List<PendingArtifactDTO>> getPendingArtifacts() {
@@ -521,8 +528,10 @@ public class ProfessorDashboardController {
         Page<CuratorApplication> pendingApps = curatorApplicationRepository.findByApplicationStatus(
             ApplicationStatus.pending, pageable
         );
+        
 
         Page<PendingCuratorDTO> dtoPage = pendingApps.map(app -> new PendingCuratorDTO(
+        		
             app.getApplicationId(),
             app.getUser().getUsername(),
             app.getUser().getEmail(),
@@ -791,7 +800,7 @@ long curatorPending = curatorApplicationRepo.countByApplicationStatus(Applicatio
         	                 c.getProfessor().getUserId().equals(professorId))
         	    .toList();
 
-        	System.out.println("Accepted curator apps reviewed by prof " + professorId + ": " + acceptedCurators.size());
+        System.out.println("Accepted curator apps reviewed by prof " + professorId + ": " + acceptedCurators.size());
         	acceptedCurators.forEach(c -> System.out.println("AppID: " + c.getApplicationId() + ", fname: " + c.getFname()));
 
 
@@ -1002,6 +1011,28 @@ long curatorPending = curatorApplicationRepo.countByApplicationStatus(Applicatio
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/curator-email/{applicationId}")
+    public ResponseEntity<String> getCuratorEmail(
+            @PathVariable Integer applicationId,
+            HttpSession session
+    ) {
+        User user = (User) session.getAttribute("loggedInUser");
+        if (user == null || user.getRole() != UserRole.professor) {
+            return ResponseEntity.status(401).build();
+        }
+
+        Optional<CuratorApplication> optApp = curatorApplicationRepo.findById(applicationId);
+        if (optApp.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        CuratorApplication app = optApp.get();
+        if (app.getUser() == null || app.getUser().getEmail() == null) {
+            return ResponseEntity.status(404).body("Email not available.");
+        }
+
+        return ResponseEntity.ok(app.getUser().getEmail());
+    }
 
 
 

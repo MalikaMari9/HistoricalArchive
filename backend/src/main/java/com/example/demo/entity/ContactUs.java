@@ -2,7 +2,7 @@ package com.example.demo.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
-
+import com.fasterxml.jackson.annotation.JsonProperty;
 @Entity
 @Table(name = "contactus_tbl")
 public class ContactUs {
@@ -23,6 +23,7 @@ public class ContactUs {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @JsonProperty("isDeleted")
     @Column(name = "is_deleted", nullable = false)
     private boolean isDeleted = false;
 

@@ -3,7 +3,6 @@ package com.example.demo.controller;
 import java.util.List;
 import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,21 +29,99 @@ public class AdminArtworksController {
     private final ArtifactRepository artifactRepository;
     private final UserArtifactRepository userArtifactRepository;
 
-    @Autowired
     public AdminArtworksController(ArtifactRepository artifactRepository, UserArtifactRepository userArtifactRepository) {
         this.artifactRepository = artifactRepository;
         this.userArtifactRepository = userArtifactRepository;
     }
 
     @GetMapping
-    public ResponseEntity<Page<ArtifactDTO>> listArtworks(
+    @CrossOrigin(origins = {"http://localhost:3000"}, exposedHeaders = {"X-Total-Count"})
+    public ResponseEntity<List<ArtifactDTO>> listArtworks(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String status
     ) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Artifact> artifactPage = artifactRepository.findAll(pageable);
-        Page<ArtifactDTO> dtoPage = artifactPage.map(this::convertToDTO);
-        return ResponseEntity.ok(dtoPage);
+        if (size <= 0) size = 10;
+        if (page < 0) page = 0;
+
+        // ---- Branch 1: no search term -> keep DB paging (fast path)
+        if (q == null || q.isBlank()) {
+            Pageable pageable = PageRequest.of(page, size);
+            Page<Artifact> artifactPage;
+            
+            // If status filter is provided, we need to filter by UserArtifact status
+            if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
+                // For status filtering, we need to get all artifacts and filter
+                List<Artifact> allArtifacts = artifactRepository.findAll();
+                List<ArtifactDTO> filteredDTOs = allArtifacts.stream()
+                    .map(this::convertToDTO)
+                    .filter(dto -> {
+                        if ("not_submitted".equalsIgnoreCase(status)) {
+                            return "not_submitted".equalsIgnoreCase(dto.getStatus());
+                        }
+                        return dto.getStatus().equalsIgnoreCase(status);
+                    })
+                    .toList();
+                
+                int total = filteredDTOs.size();
+                int start = Math.min(page * size, total);
+                int end = Math.min(start + size, total);
+                List<ArtifactDTO> pageSlice = filteredDTOs.subList(start, end);
+                
+                return ResponseEntity.ok()
+                        .header("X-Total-Count", String.valueOf(total))
+                        .body(pageSlice);
+            } else {
+                // No status filter, use regular pagination
+                artifactPage = artifactRepository.findAll(pageable);
+                List<ArtifactDTO> content = artifactPage.getContent().stream()
+                        .map(this::convertToDTO)
+                        .toList();
+                
+                return ResponseEntity.ok()
+                        .header("X-Total-Count", String.valueOf(artifactPage.getTotalElements()))
+                        .body(content);
+            }
+        }
+
+        // ---- Branch 2: search term present -> filter THEN paginate
+        final String qLower = q.toLowerCase();
+        List<Artifact> allArtifacts = artifactRepository.findAll();
+        
+        // Filter by search term and status
+        List<ArtifactDTO> filteredDTOs = allArtifacts.stream()
+                .map(this::convertToDTO)
+                .filter(dto -> {
+                    // Search filter
+                    boolean matchesSearch = dto.getTitle() != null && dto.getTitle().toLowerCase().contains(qLower) ||
+                                           dto.getDescription() != null && dto.getDescription().toLowerCase().contains(qLower) ||
+                                           dto.getCategory() != null && dto.getCategory().toLowerCase().contains(qLower) ||
+                                           dto.getCulture() != null && dto.getCulture().toLowerCase().contains(qLower) ||
+                                           dto.getUploaded_by() != null && dto.getUploaded_by().toLowerCase().contains(qLower);
+                    
+                    if (!matchesSearch) return false;
+                    
+                    // Status filter
+                    if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
+                        if ("not_submitted".equalsIgnoreCase(status)) {
+                            return "not_submitted".equalsIgnoreCase(dto.getStatus());
+                        }
+                        return dto.getStatus().equalsIgnoreCase(status);
+                    }
+                    
+                    return true;
+                })
+                .toList();
+
+        int total = filteredDTOs.size();
+        int start = Math.min(page * size, total);
+        int end = Math.min(start + size, total);
+        List<ArtifactDTO> pageSlice = filteredDTOs.subList(start, end);
+
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(total))
+                .body(pageSlice);
     }
     
     @GetMapping("/all")

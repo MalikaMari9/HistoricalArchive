@@ -1,12 +1,18 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Pagination,
   PaginationContent,
   PaginationItem,
-  PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
@@ -18,12 +24,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   AdminArtworkDto,
   adminDeleteArtwork,
-  adminListAllArtworks, // fetch ALL
+  adminListAllArtworks, // fetch ALL for counts
+  adminListArtworksPaginated, // fetch with pagination
 } from "@/services/api";
 import {
   ArrowLeft,
@@ -39,15 +45,23 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 /** Status type for filtering */
-type StatusFilter = "all" | "pending" | "accepted" | "rejected" | "not_submitted";
+type StatusFilter =
+  | "all"
+  | "pending"
+  | "accepted"
+  | "rejected"
+;
 
 export const ManageArtworks = () => {
   const navigate = useNavigate();
   const { user, ready } = useAuthGuard();
 
   // dataset
-  const [allArtworks, setAllArtworks] = useState<AdminArtworkDto[]>([]);
+  const [artworks, setArtworks] = useState<AdminArtworkDto[]>([]);
+  const [allArtworks, setAllArtworks] = useState<AdminArtworkDto[]>([]); // for counting
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [countsLoading, setCountsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ui state
@@ -55,11 +69,21 @@ export const ManageArtworks = () => {
   const [pageSize] = useState(10);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // delete dialog state
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [selectedForDelete, setSelectedForDelete] = useState<AdminArtworkDto | null>(null);
+  const [selectedForDelete, setSelectedForDelete] =
+    useState<AdminArtworkDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // auth + initial load
   useEffect(() => {
@@ -73,82 +97,121 @@ export const ManageArtworks = () => {
       return;
     }
 
-    (async () => {
+    loadArtworks();
+    loadAllArtworksForCounts();
+  }, [ready, user, navigate]);
+
+  // reload when search or status filter changes
+  useEffect(() => {
+    if (!ready || !user) return;
+    setPageIndex(1); // reset to first page
+    loadArtworks();
+  }, [debouncedSearch, statusFilter]);
+
+  // reload when page changes
+  useEffect(() => {
+    if (!ready || !user) return;
+    loadArtworks();
+  }, [pageIndex]);
+
+  const loadArtworks = async () => {
+    try {
       setLoading(true);
       setError(null);
-      try {
-        const list = await adminListAllArtworks();
-        setAllArtworks(list);
-      } catch {
-        setError("Failed to load artworks");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [ready, user, navigate]);
+      const result = await adminListArtworksPaginated(
+        pageIndex - 1, // API uses 0-based indexing
+        pageSize,
+        {
+          q: debouncedSearch || undefined,
+          status: statusFilter === "all" ? undefined : statusFilter,
+        }
+      );
+      setArtworks(result.content);
+      setTotalCount(result.total);
+    } catch {
+      setError("Failed to load artworks");
+      setArtworks([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load all artworks for status counts (separate from pagination)
+  const loadAllArtworksForCounts = async () => {
+    try {
+      setCountsLoading(true);
+      const allData = await adminListAllArtworks();
+      console.log("📊 Loaded all artworks for counts:", allData.length);
+      console.log(
+        "📊 Sample artwork statuses:",
+        allData.slice(0, 3).map((a) => ({
+          id: a._id,
+          title: a.title,
+          status: a.status,
+          calculatedStatus: getArtworkStatus(a),
+        }))
+      );
+      setAllArtworks(allData);
+    } catch (error) {
+      console.error("Failed to load artwork counts:", error);
+      setAllArtworks([]);
+    } finally {
+      setCountsLoading(false);
+    }
+  };
 
   // helpers
   function getArtworkStatus(
     artwork: AdminArtworkDto
   ): "pending" | "accepted" | "rejected" | "not_submitted" {
     const status = artwork.status?.toLowerCase();
-    if (status === "pending" || status === "accepted" || status === "rejected" || status === "not_submitted") {
+    if (
+      status === "pending" ||
+      status === "accepted" ||
+      status === "rejected" ||
+      status === "not_submitted"
+    ) {
       return status;
     }
     return "not_submitted";
   }
 
-  // reset page when filters change
-  useEffect(() => {
-    setPageIndex(1);
-  }, [search, statusFilter]);
-
-  // counts (over ALL)
+  // Counts for status pills (similar to ManageUsers)
   const statusCounts = useMemo(() => {
     let pending = 0,
       accepted = 0,
       rejected = 0,
       not_submitted = 0;
-    for (const a of allArtworks) {
-      const s = getArtworkStatus(a);
-      if (s === "pending") pending++;
-      else if (s === "accepted") accepted++;
-      else if (s === "rejected") rejected++;
-      else if (s === "not_submitted") not_submitted++;
+
+    console.log("🔢 Calculating counts for", allArtworks.length, "artworks");
+
+    for (const artwork of allArtworks) {
+      const status = getArtworkStatus(artwork);
+      if (status === "pending") pending++;
+      else if (status === "accepted") accepted++;
+      else if (status === "rejected") rejected++;
+      else if (status === "not_submitted") not_submitted++;
     }
-    return {
+
+    const counts = {
       pending,
       accepted,
       rejected,
       not_submitted,
       total: allArtworks.length,
     };
+
+    console.log("🔢 Final counts:", counts);
+    return counts;
   }, [allArtworks]);
 
-  // filter ALL
-  const filteredArtworks = useMemo(() => {
-    const q = search.toLowerCase();
-    return allArtworks.filter((a) => {
-      const matchesSearch =
-        (a.title || "").toLowerCase().includes(q) ||
-        (a.category || "").toLowerCase().includes(q) ||
-        (a.uploaded_by || "").toLowerCase().includes(q);
-
-      const matchesStatus = statusFilter === "all" || getArtworkStatus(a) === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [allArtworks, search, statusFilter]);
-
-  // paginate filtered
-  const totalPages = Math.max(1, Math.ceil(filteredArtworks.length / pageSize));
-  const paginatedArtworks = useMemo(() => {
-    const start = (pageIndex - 1) * pageSize;
-    return filteredArtworks.slice(start, start + pageSize);
-  }, [filteredArtworks, pageIndex, pageSize]);
+  // calculate total pages from server response
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   // clamp pageIndex if list shrinks
   useEffect(() => {
-    if (pageIndex > totalPages) setPageIndex(totalPages);
+    if (pageIndex > totalPages && totalPages > 0) setPageIndex(totalPages);
   }, [pageIndex, totalPages]);
 
   const handleViewDetails = (id: string) => {
@@ -167,9 +230,11 @@ export const ManageArtworks = () => {
     setDeleting(true);
     try {
       await adminDeleteArtwork(selectedForDelete._id);
-      setAllArtworks((prev) => prev.filter((a) => a._id !== selectedForDelete._id));
       setIsDeleteOpen(false);
       setSelectedForDelete(null);
+      // Reload both paginated data and counts
+      await loadArtworks();
+      await loadAllArtworksForCounts();
     } catch (e) {
       console.error("Failed to delete artwork", e);
     } finally {
@@ -185,8 +250,12 @@ export const ManageArtworks = () => {
           Back to Dashboard
         </Button>
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Manage Artworks</h1>
-          <p className="text-muted-foreground mt-2">Manage all artworks uploaded by curators</p>
+          <h1 className="text-3xl font-bold text-foreground">
+            Manage Artworks
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Manage all artworks uploaded by curators
+          </p>
         </div>
       </div>
 
@@ -208,51 +277,50 @@ export const ManageArtworks = () => {
               />
             </div>
 
-            {/* Status pills */}
+            {/* Status pills with counts */}
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant={statusFilter === "all" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setStatusFilter("all")}
+                disabled={countsLoading}
               >
-                All ({statusCounts.total})
+                All ({countsLoading ? "..." : statusCounts.total})
               </Button>
               <Button
                 variant={statusFilter === "pending" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setStatusFilter("pending")}
+                disabled={countsLoading}
               >
                 <Clock className="h-4 w-4 mr-1" />
-                Pending ({statusCounts.pending})
+                Pending ({countsLoading ? "..." : statusCounts.pending})
               </Button>
               <Button
                 variant={statusFilter === "accepted" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setStatusFilter("accepted")}
+                disabled={countsLoading}
               >
                 <CheckCircle className="h-4 w-4 mr-1" />
-                Accepted ({statusCounts.accepted})
+                Accepted ({countsLoading ? "..." : statusCounts.accepted})
               </Button>
               <Button
                 variant={statusFilter === "rejected" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setStatusFilter("rejected")}
+                disabled={countsLoading}
               >
                 <XCircle className="h-4 w-4 mr-1" />
-                Rejected ({statusCounts.rejected})
+                Rejected ({countsLoading ? "..." : statusCounts.rejected})
               </Button>
-              <Button
-                variant={statusFilter === "not_submitted" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("not_submitted")}
-              >
-                <Minus className="h-4 w-4 mr-1" />
-                Not Submitted ({statusCounts.not_submitted})
-              </Button>
+            
             </div>
           </div>
 
-          {error && <div className="text-sm text-destructive mb-3">{error}</div>}
+          {error && (
+            <div className="text-sm text-destructive mb-3">{error}</div>
+          )}
 
           <div className="rounded-md border">
             <Table>
@@ -267,25 +335,33 @@ export const ManageArtworks = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading && paginatedArtworks.length === 0 && (
+                {loading && artworks.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-sm text-muted-foreground">
+                    <TableCell
+                      colSpan={6}
+                      className="text-sm text-muted-foreground"
+                    >
                       Loading...
                     </TableCell>
                   </TableRow>
                 )}
-                {!loading && paginatedArtworks.length === 0 && (
+                {!loading && artworks.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-sm text-muted-foreground">
+                    <TableCell
+                      colSpan={6}
+                      className="text-sm text-muted-foreground"
+                    >
                       No artworks found.
                     </TableCell>
                   </TableRow>
                 )}
 
-                {paginatedArtworks.map((artwork) => {
+                {artworks.map((artwork) => {
                   const status = getArtworkStatus(artwork);
                   const imageUrl =
-                    artwork.image_url || artwork.images?.[0]?.baseimageurl || "/default-artifact.png";
+                    artwork.image_url ||
+                    artwork.images?.[0]?.baseimageurl ||
+                    "/default-artifact.png";
 
                   return (
                     <TableRow key={artwork._id}>
@@ -297,7 +373,9 @@ export const ManageArtworks = () => {
                             className="w-12 h-12 rounded-md object-cover"
                           />
                           <div>
-                            <div className="font-medium text-foreground">{artwork.title}</div>
+                            <div className="font-medium text-foreground">
+                              {artwork.title}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -305,17 +383,39 @@ export const ManageArtworks = () => {
                       <TableCell>{artwork.category || "-"}</TableCell>
                       <TableCell>
                         {status === "pending" ? (
-                          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Pending</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="bg-yellow-100 text-yellow-800"
+                          >
+                            Pending
+                          </Badge>
                         ) : status === "accepted" ? (
-                          <Badge variant="secondary" className="bg-green-100 text-green-800">Accepted</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="bg-green-100 text-green-800"
+                          >
+                            Accepted
+                          </Badge>
                         ) : status === "rejected" ? (
-                          <Badge variant="secondary" className="bg-red-100 text-red-800">Rejected</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="bg-red-100 text-red-800"
+                          >
+                            Rejected
+                          </Badge>
                         ) : (
-                          <Badge variant="secondary" className="bg-gray-100 text-gray-800">Not Submitted</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="bg-gray-100 text-gray-800"
+                          >
+                            Not Submitted
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell>
-                        {artwork.uploaded_at ? new Date(artwork.uploaded_at).toLocaleDateString() : "-"}
+                        {artwork.uploaded_at
+                          ? new Date(artwork.uploaded_at).toLocaleDateString()
+                          : "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-2 justify-end">
@@ -344,42 +444,47 @@ export const ManageArtworks = () => {
             </Table>
           </div>
 
-{totalPages > 1 && (
-  <div className="mt-4">
-    <Pagination>
-      <PaginationContent className="gap-4">
-        <PaginationItem>
-          <PaginationPrevious
-            href="#"
-            aria-label="Previous page"
-            onClick={(e) => {
-              e.preventDefault();
-              if (pageIndex > 1) setPageIndex((p) => p - 1);
-            }}
-            className={pageIndex === 1 ? "pointer-events-none opacity-50" : ""}
-          />
-        </PaginationItem>
+          {totalPages > 1 && (
+            <div className="mt-4">
+              <Pagination>
+                <PaginationContent className="gap-4">
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      aria-label="Previous page"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (pageIndex > 1) setPageIndex((p) => p - 1);
+                      }}
+                      className={
+                        pageIndex === 1 ? "pointer-events-none opacity-50" : ""
+                      }
+                    />
+                  </PaginationItem>
 
-        <span className="text-sm text-muted-foreground select-none">
-          Page {pageIndex} of {totalPages}
-        </span>
+                  <span className="text-sm text-muted-foreground select-none">
+                    Page {pageIndex} of {totalPages}
+                  </span>
 
-        <PaginationItem>
-          <PaginationNext
-            href="#"
-            aria-label="Next page"
-            onClick={(e) => {
-              e.preventDefault();
-              if (pageIndex < totalPages) setPageIndex((p) => p + 1);
-            }}
-            className={pageIndex === totalPages ? "pointer-events-none opacity-50" : ""}
-          />
-        </PaginationItem>
-      </PaginationContent>
-    </Pagination>
-  </div>
-)}
-
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      aria-label="Next page"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (pageIndex < totalPages) setPageIndex((p) => p + 1);
+                      }}
+                      className={
+                        pageIndex === totalPages
+                          ? "pointer-events-none opacity-50"
+                          : ""
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -392,10 +497,11 @@ export const ManageArtworks = () => {
           {selectedForDelete && (
             <div className="space-y-4">
               <p className="text-sm">
-                Are you sure you want to permanently delete
-                {" "}
-                <span className="font-semibold">“{selectedForDelete.title}”</span>?
-                This action cannot be undone.
+                Are you sure you want to permanently delete{" "}
+                <span className="font-semibold">
+                  “{selectedForDelete.title}”
+                </span>
+                ? This action cannot be undone.
               </p>
 
               <div className="flex items-center gap-3">

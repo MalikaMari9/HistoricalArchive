@@ -59,35 +59,44 @@ export default function AdminContactInbox() {
     else if (user.role !== "admin") navigate("/403", { replace: true });
   }, [ready, user, navigate]);
 
-  const loadPage = async () => {
-    try {
-      setLoading(true);
-      const resp = await adminListContactMessages(
-        page,
-        PAGE_SIZE,
-        { includeDeleted: includeDeleted !== "active" }
-      );
+const loadPage = async () => {
+  try {
+    setLoading(true);
+const resp = await adminListContactMessages(
+  page,
+  PAGE_SIZE,
+  {
+    includeDeleted: includeDeleted !== "active",
+    deletedOnly: includeDeleted === "deleted",
+  }
+);
 
-      // If "deleted only", filter client-side for now
-      const filtered = includeDeleted === "deleted"
-        ? {
-            ...resp,
-            content: resp.content.filter((m) => m.isDeleted),
-            // keep server totals; we're just hiding rows on this page
-          }
-        : resp;
 
-      setData(filtered);
-    } catch (err) {
-      console.error(err);
-      toast({ title: "Error", description: "Failed to load inbox", variant: "destructive" });
-    } finally {
-      setLoading(false);
+    let filtered = resp;
+
+    if (includeDeleted === "deleted") {
+      // Filter client-side to only show archived
+      filtered = {
+        ...resp,
+        content: resp.content.filter((m) => m.isDeleted),
+      };
     }
-  };
+
+    console.log("includeDeleted:", includeDeleted);
+console.log("received from backend:", resp);
+
+    setData(filtered);
+  } catch (err) {
+    console.error(err);
+    toast({ title: "Error", description: "Failed to load inbox", variant: "destructive" });
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     loadPage();
+    
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, includeDeleted]);
 

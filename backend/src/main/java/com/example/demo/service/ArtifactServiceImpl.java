@@ -30,10 +30,10 @@ public class ArtifactServiceImpl implements ArtifactService {
                                           String department, String period, String medium, String artistName,
                                           String tags, LocalDate fromDate, LocalDate toDate,
                                           String locationQuery, Double latitude, Double longitude, Double radius,
-                                          String city, String country, Pageable pageable) {
+                                          String city, String country, String sortBy, Pageable pageable) {
         return artifactRepository.searchArtifacts(
             anyField, title, category, culture, department, period, medium, artistName, tags, fromDate, toDate,
-            locationQuery, latitude, longitude, radius, city, country, pageable
+            locationQuery, latitude, longitude, radius, city, country, sortBy, pageable
         );
     }
     

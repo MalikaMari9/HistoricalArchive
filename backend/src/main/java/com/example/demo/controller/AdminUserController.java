@@ -1,7 +1,10 @@
 package com.example.demo.controller;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -15,8 +18,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.demo.entity.CuratorApplication;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserRole;
+import com.example.demo.repository.CuratorApplicationRepository;
 import com.example.demo.repository.UserRepository;
 
 @RestController
@@ -26,10 +31,35 @@ public class AdminUserController {
 
     @Autowired
     private UserRepository userRepository;
+    
+    @Autowired
+    private CuratorApplicationRepository curatorApplicationRepository;
 
     @GetMapping
-    public ResponseEntity<List<User>> listUsers() {
-        return ResponseEntity.ok(userRepository.findAll());
+    public ResponseEntity<List<Map<String, Object>>> listUsers() {
+        List<User> users = userRepository.findAll();
+        
+        List<Map<String, Object>> userDtos = users.stream().map(user -> {
+            Map<String, Object> userDto = new HashMap<>();
+            userDto.put("userId", user.getUserId());
+            userDto.put("username", user.getUsername());
+            userDto.put("email", user.getEmail());
+            userDto.put("role", user.getRole().name());
+            userDto.put("createdAt", user.getCreatedAt());
+            userDto.put("restricted", user.isRestricted());
+            
+            // Get curator application status if exists
+            Optional<CuratorApplication> curatorApp = curatorApplicationRepository.findFirstByUser(user);
+            if (curatorApp.isPresent()) {
+                userDto.put("curatorApplicationStatus", curatorApp.get().getApplicationStatus().name().toLowerCase());
+            } else {
+                userDto.put("curatorApplicationStatus", null);
+            }
+            
+            return userDto;
+        }).collect(Collectors.toList());
+        
+        return ResponseEntity.ok(userDtos);
     }
 
     @PatchMapping("/{id}/role")

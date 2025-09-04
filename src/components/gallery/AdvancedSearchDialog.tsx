@@ -258,13 +258,17 @@ export function AdvancedSearchDialog({
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={setFromDate}
-                      initialFocus
-                      className="p-3"
-                    />
+                   <Calendar
+  mode="single"
+  selected={fromDate}
+  onSelect={setFromDate}
+  initialFocus
+    fromYear={1600} // 👈 Add this line
+  toYear={new Date().getFullYear()} // 👈 And this one
+  captionLayout="dropdown" // 👈 Enables year/month dropdown for easier navigation
+  
+/>
+
                   </PopoverContent>
                 </Popover>
               </div>
@@ -285,13 +289,18 @@ export function AdvancedSearchDialog({
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={setToDate}
-                      initialFocus
-                      className="p-3"
-                    />
+                  <Calendar
+  mode="single"
+  selected={fromDate}
+  onSelect={setFromDate}
+  initialFocus
+  fromYear={1600} // 👈 Add this line
+  toYear={new Date().getFullYear()} // 👈 And this one
+  captionLayout="dropdown" // 👈 Enables year/month dropdown for easier navigation
+
+  className="p-3"
+/>
+
                   </PopoverContent>
                 </Popover>
               </div>

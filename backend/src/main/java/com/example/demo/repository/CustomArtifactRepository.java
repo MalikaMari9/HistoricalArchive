@@ -26,6 +26,7 @@ public interface CustomArtifactRepository {
             Double radius,
             String city,
             String country,
+            String sortBy,
             Pageable pageable
     );
     

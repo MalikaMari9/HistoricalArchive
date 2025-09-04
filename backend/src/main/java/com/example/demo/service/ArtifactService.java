@@ -30,6 +30,7 @@ public interface ArtifactService {
         Double radius,
         String city,
         String country,
+        String sortBy,
         Pageable pageable
     );
     

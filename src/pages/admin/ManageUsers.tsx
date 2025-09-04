@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Pagination,
   PaginationContent,
@@ -32,6 +33,13 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -49,6 +57,8 @@ import {
   type AdminUser,
 } from "@/services/api";
 
+import { useToast } from "@/hooks/use-toast";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import {
   ArrowLeft,
   CheckCircle,
@@ -60,21 +70,21 @@ import {
   UserPlus,
   XCircle,
 } from "lucide-react";
-import { useAuthGuard } from "@/hooks/useAuthGuard";
 
-/** Local “status” type for filtering */
-type StatusFilter = "all" | "pending" | "accepted" | "rejected";
+/** Local status type (now includes "restricted") */
+type StatusFilter = "all" | "pending" | "accepted" | "rejected" | "restricted";
 
 export default function ManageUsers() {
   const { user, ready } = useAuthGuard();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Client-side pagination (unchanged)
+  // Client-side pagination
   const [pageIndex, setPageIndex] = useState(1); // 1-based index
   const pageSize = 6;
 
@@ -86,7 +96,14 @@ export default function ManageUsers() {
   const [newRole, setNewRole] = useState<AdminUser["role"]>("visitor");
   const [creating, setCreating] = useState(false);
 
-  // NEW: status filter state (like professor page, but single table)
+  // Change Role modal state
+  const [isChangeRoleOpen, setIsChangeRoleOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [selectedRole, setSelectedRole] =
+    useState<AdminUser["role"]>("visitor");
+  const [changingRole, setChangingRole] = useState(false);
+
+  // Status filter (now includes "restricted")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   // ───────────────────────── Auth Guard ─────────────────────────
@@ -118,42 +135,52 @@ export default function ManageUsers() {
 
   // ───────────────────── Status Helpers (derived) ─────────────────────
   /**
-   * Determine a user's status (pending/accepted/rejected) from available fields.
+   * Determine status (pending/accepted/rejected/restricted) from curator application status.
    * Priority:
-   * 1) user.status or user.applicationStatus if provided by API
-   * 2) derived from `restricted`: accepted = !restricted, rejected = restricted
-   * 3) pending only if API provides it
+   * 1) restricted users -> "restricted"
+   * 2) curator application status -> "pending", "accepted", or "rejected"
+   * 3) fallback -> "accepted" (normal active users)
    */
-  function getUserStatus(u: AdminUser): "pending" | "accepted" | "rejected" {
-    const anyU = u as any;
-    const explicit = (anyU.status ||
-      anyU.applicationStatus ||
-      anyU.approvalStatus) as StatusFilter | undefined;
-
-    if (explicit === "pending" || explicit === "accepted" || explicit === "rejected") {
-      return explicit;
+  function getUserStatus(
+    u: AdminUser
+  ): "pending" | "accepted" | "rejected" | "restricted" {
+    // First check if user is restricted
+    if (u.restricted) {
+      return "restricted";
     }
 
-    // Fallback to restricted mapping
-    return u.restricted ? "rejected" : "accepted";
+    // Then check curator application status
+    if (u.curatorApplicationStatus === "pending") {
+      return "pending";
+    }
+    if (u.curatorApplicationStatus === "rejected") {
+      return "rejected";
+    }
+    if (u.curatorApplicationStatus === "accepted") {
+      return "accepted";
+    }
+
+    // Fallback for users without curator applications (normal active users)
+    return "accepted";
   }
 
   // Counts for status pills
   const statusCounts = useMemo(() => {
     let pending = 0,
       accepted = 0,
-      rejected = 0;
+      rejected = 0,
+      restricted = 0;
     for (const u of users) {
       const s = getUserStatus(u);
       if (s === "pending") pending++;
       else if (s === "accepted") accepted++;
-      else rejected++;
+      else if (s === "rejected") rejected++;
+      else if (s === "restricted") restricted++;
     }
-    return { pending, accepted, rejected, total: users.length };
+    return { pending, accepted, rejected, restricted, total: users.length };
   }, [users]);
 
   // ───────────────────────── Filters + Search ─────────────────────────
-  // When search or status changes, go back to first page for UX
   useEffect(() => {
     setPageIndex(1);
   }, [searchQuery, statusFilter]);
@@ -161,26 +188,28 @@ export default function ManageUsers() {
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
-    return users
-      // hide admins from the table
-      .filter((u) => u.role !== "admin")
-      // status filter
-      .filter((u) => {
-        const s = getUserStatus(u);
-        if (statusFilter === "all") return true;
-        return s === statusFilter;
-      })
-      // search filter (username, email, role, and status text)
-      .filter((u) => {
-        if (!q) return true;
-        const s = getUserStatus(u);
-        return (
-          u.username.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q) ||
-          u.role.toLowerCase().includes(q) ||
-          s.includes(q) // allow searching by "pending/accepted/rejected"
-        );
-      });
+    return (
+      users
+        // hide admins from the table
+        .filter((u) => u.role !== "admin")
+        // status filter
+        .filter((u) => {
+          const s = getUserStatus(u);
+          if (statusFilter === "all") return true;
+          return s === statusFilter;
+        })
+        // search filter
+        .filter((u) => {
+          if (!q) return true;
+          const s = getUserStatus(u);
+          return (
+            u.username.toLowerCase().includes(q) ||
+            u.email.toLowerCase().includes(q) ||
+            u.role.toLowerCase().includes(q) ||
+            s.includes(q) // allows searching "restricted" etc.
+          );
+        })
+    );
   }, [users, searchQuery, statusFilter]);
 
   // ───────────────────────── Pagination ─────────────────────────
@@ -204,21 +233,47 @@ export default function ManageUsers() {
     }
   };
 
-  const handleChangeRole = async (u: AdminUser) => {
-    const next = window.prompt(
-      "Set role (admin, professor, curator, visitor):",
-      u.role
-    );
-    if (!next) return;
+  const handleChangeRoleOpen = (u: AdminUser) => {
+    setSelectedUser(u);
+    setSelectedRole(u.role);
+    setIsChangeRoleOpen(true);
+  };
+
+  const confirmRoleChange = async () => {
+    if (!selectedUser) return;
+
     try {
-      await adminUpdateUserRole(u.userId, next as AdminUser["role"]);
+      setChangingRole(true);
+      await adminUpdateUserRole(selectedUser.userId, selectedRole);
       await load();
-    } catch {
-      alert("Failed to update role");
+
+      toast({
+        title: "Role Updated Successfully",
+        description: `${selectedUser.username} has been assigned the ${selectedRole} role.`,
+      });
+
+      setIsChangeRoleOpen(false);
+      setSelectedUser(null);
+    } catch (error) {
+      console.error("Failed to update role:", error);
+      toast({
+        title: "Failed to Update Role",
+        description:
+          "There was an error updating the user's role. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingRole(false);
     }
   };
 
-  const handleDelete = async (u: AdminUser) => {
+  const cancelRoleChange = () => {
+    setIsChangeRoleOpen(false);
+    setSelectedUser(null);
+    setSelectedRole("visitor");
+  };
+
+  const handleRestrict = async (u: AdminUser) => {
     if (
       !window.confirm(
         `Restrict user ${u.username}? They won't be able to login.`
@@ -228,8 +283,17 @@ export default function ManageUsers() {
     try {
       await adminRestrictUser(u.userId);
       await load();
+      toast({
+        title: "User Restricted",
+        description: `${u.username} has been restricted and can no longer login.`,
+      });
     } catch {
-      alert("Failed to restrict user");
+      toast({
+        title: "Failed to Restrict User",
+        description:
+          "There was an error restricting the user. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -237,8 +301,17 @@ export default function ManageUsers() {
     try {
       await adminUnrestrictUser(u.userId);
       await load();
+      toast({
+        title: "User Unrestricted",
+        description: `${u.username} can now login again.`,
+      });
     } catch {
-      alert("Failed to unrestrict user");
+      toast({
+        title: "Failed to Unrestrict User",
+        description:
+          "There was an error unrestricting the user. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -301,7 +374,7 @@ export default function ManageUsers() {
                 />
               </div>
 
-              {/* Status "tabs" (filter pills) – single table remains */}
+              {/* Status filter pills (now includes Restricted) */}
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant={statusFilter === "all" ? "default" : "outline"}
@@ -333,6 +406,16 @@ export default function ManageUsers() {
                 >
                   <XCircle className="h-4 w-4 mr-1" />
                   Rejected ({statusCounts.rejected})
+                </Button>
+                <Button
+                  variant={
+                    statusFilter === "restricted" ? "default" : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setStatusFilter("restricted")}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Restricted ({statusCounts.restricted})
                 </Button>
               </div>
             </div>
@@ -384,27 +467,47 @@ export default function ManageUsers() {
                           </TableCell>
 
                           <TableCell>
-                            <Badge variant={getRoleBadgeVariant(u.role)}>{u.role}</Badge>
+                            <Badge variant={getRoleBadgeVariant(u.role)}>
+                              {u.role}
+                            </Badge>
                           </TableCell>
 
                           <TableCell>
                             {status === "pending" ? (
-                              <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                              <Badge
+                                variant="secondary"
+                                className="bg-yellow-100 text-yellow-800"
+                              >
                                 Pending
                               </Badge>
                             ) : status === "accepted" ? (
-                              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              <Badge
+                                variant="secondary"
+                                className="bg-green-100 text-green-800"
+                              >
                                 Accepted
                               </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-red-100 text-red-800">
+                            ) : status === "rejected" ? (
+                              <Badge
+                                variant="secondary"
+                                className="bg-red-100 text-red-800"
+                              >
                                 Rejected
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className="bg-orange-100 text-orange-800"
+                              >
+                                Restricted
                               </Badge>
                             )}
                           </TableCell>
 
                           <TableCell>
-                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "-"}
+                            {u.createdAt
+                              ? dateFmt.format(new Date(u.createdAt))
+                              : "-"}
                           </TableCell>
 
                           <TableCell className="text-right">
@@ -415,7 +518,9 @@ export default function ManageUsers() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleChangeRole(u)}>
+                                <DropdownMenuItem
+                                  onClick={() => handleChangeRoleOpen(u)}
+                                >
                                   <Edit className="mr-2 h-4 w-4" />
                                   Change Role
                                 </DropdownMenuItem>
@@ -423,13 +528,15 @@ export default function ManageUsers() {
                                 {!u.restricted ? (
                                   <DropdownMenuItem
                                     className="text-destructive"
-                                    onClick={() => handleDelete(u)}
+                                    onClick={() => handleRestrict(u)}
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
                                     Restrict User
                                   </DropdownMenuItem>
                                 ) : (
-                                  <DropdownMenuItem onClick={() => handleUnrestrict(u)}>
+                                  <DropdownMenuItem
+                                    onClick={() => handleUnrestrict(u)}
+                                  >
                                     <Edit className="mr-2 h-4 w-4" />
                                     Unrestrict User
                                   </DropdownMenuItem>
@@ -452,7 +559,7 @@ export default function ManageUsers() {
               </div>
             )}
 
-            {/* Pagination (unchanged) */}
+            {/* Pagination */}
             {filteredUsers.length > 0 && (
               <div className="mt-4">
                 <Pagination>
@@ -464,32 +571,41 @@ export default function ManageUsers() {
                           e.preventDefault();
                           if (pageIndex > 1) setPageIndex(pageIndex - 1);
                         }}
-                        className={pageIndex === 1 ? "pointer-events-none opacity-50" : ""}
+                        className={
+                          pageIndex === 1
+                            ? "pointer-events-none opacity-50"
+                            : ""
+                        }
                       />
                     </PaginationItem>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                      <PaginationItem key={p}>
-                        <PaginationLink
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setPageIndex(p);
-                          }}
-                          isActive={pageIndex === p}
-                        >
-                          {p}
-                        </PaginationLink>
-                      </PaginationItem>
-                    ))}
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                      (p) => (
+                        <PaginationItem key={p}>
+                          <PaginationLink
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setPageIndex(p);
+                            }}
+                            isActive={pageIndex === p}
+                          >
+                            {p}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    )}
                     <PaginationItem>
                       <PaginationNext
                         href="#"
                         onClick={(e) => {
                           e.preventDefault();
-                          if (pageIndex < totalPages) setPageIndex(pageIndex + 1);
+                          if (pageIndex < totalPages)
+                            setPageIndex(pageIndex + 1);
                         }}
                         className={
-                          pageIndex === totalPages ? "pointer-events-none opacity-50" : ""
+                          pageIndex === totalPages
+                            ? "pointer-events-none opacity-50"
+                            : ""
                         }
                       />
                     </PaginationItem>
@@ -510,7 +626,10 @@ export default function ManageUsers() {
           <div className="space-y-3">
             <div>
               <label className="block text-sm mb-1">Username</label>
-              <Input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
+              <Input
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+              />
             </div>
             <div>
               <label className="block text-sm mb-1">Email</label>
@@ -533,7 +652,9 @@ export default function ManageUsers() {
               <select
                 className="w-full border rounded h-10 px-3 bg-background"
                 value={newRole}
-                onChange={(e) => setNewRole(e.target.value as AdminUser["role"])}
+                onChange={(e) =>
+                  setNewRole(e.target.value as AdminUser["role"])
+                }
               >
                 <option value="visitor">visitor</option>
                 <option value="curator">curator</option>
@@ -542,7 +663,11 @@ export default function ManageUsers() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)} disabled={creating}>
+            <Button
+              variant="outline"
+              onClick={() => setIsCreateOpen(false)}
+              disabled={creating}
+            >
               Cancel
             </Button>
             <Button
@@ -550,15 +675,18 @@ export default function ManageUsers() {
                 if (!newUsername || !newEmail || !newPassword) return;
                 try {
                   setCreating(true);
-                  const res = await fetch("http://localhost:8080/api/users/register", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      username: newUsername,
-                      email: newEmail,
-                      password: newPassword,
-                    }),
-                  });
+                  const res = await fetch(
+                    "http://localhost:8080/api/users/register",
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        username: newUsername,
+                        email: newEmail,
+                        password: newPassword,
+                      }),
+                    }
+                  );
                   if (!res.ok) {
                     const msg = await res.text();
                     throw new Error(msg || "Failed to create user");
@@ -580,8 +708,16 @@ export default function ManageUsers() {
                   setNewEmail("");
                   setNewPassword("");
                   setNewRole("visitor");
+                  toast({
+                    title: "User Created",
+                    description: "The account has been created successfully.",
+                  });
                 } catch (e) {
-                  alert(String(e));
+                  toast({
+                    title: "Failed to Create User",
+                    description: String(e),
+                    variant: "destructive",
+                  });
                 } finally {
                   setCreating(false);
                 }
@@ -589,6 +725,107 @@ export default function ManageUsers() {
               disabled={creating || !newUsername || !newEmail || !newPassword}
             >
               {creating ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Role Dialog */}
+      <Dialog open={isChangeRoleOpen} onOpenChange={setIsChangeRoleOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change User Role</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            {selectedUser && (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-muted/50 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{selectedUser.username}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedUser.email}
+                      </p>
+                    </div>
+                    <Badge variant={getRoleBadgeVariant(selectedUser.role)}>
+                      Current: {selectedUser.role}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="role-select">New Role</Label>
+                  <Select
+                    value={selectedRole}
+                    onValueChange={(value: AdminUser["role"]) =>
+                      setSelectedRole(value)
+                    }
+                  >
+                    <SelectTrigger id="role-select">
+                      <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="visitor">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">visitor</Badge>
+                          <span className="text-sm text-muted-foreground">
+                            Basic access
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="curator">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">curator</Badge>
+                          <span className="text-sm text-muted-foreground">
+                            Can manage artifacts
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="professor">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="default">professor</Badge>
+                          <span className="text-sm text-muted-foreground">
+                            Can review submissions
+                          </span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedRole !== selectedUser.role && (
+                  <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3">
+                    <div className="flex items-start gap-2">
+                      <div className="text-yellow-600 mt-0.5">⚠️</div>
+                      <div className="text-sm">
+                        <p className="font-medium text-yellow-800">
+                          Role Change Confirmation
+                        </p>
+                        <p className="text-yellow-700">
+                          Changing from <strong>{selectedUser.role}</strong> to{" "}
+                          <strong>{selectedRole}</strong> will immediately
+                          update the user's permissions.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={cancelRoleChange}
+              disabled={changingRole}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmRoleChange}
+              disabled={changingRole || selectedRole === selectedUser?.role}
+            >
+              {changingRole ? "Updating..." : "Update Role"}
             </Button>
           </DialogFooter>
         </DialogContent>

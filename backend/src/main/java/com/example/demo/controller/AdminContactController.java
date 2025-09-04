@@ -18,13 +18,20 @@ public class AdminContactController {
     public Page<ContactUs> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "false") boolean includeDeleted
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean deletedOnly
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return includeDeleted
-                ? contactUsRepository.findAll(pageable)
-                : contactUsRepository.findByIsDeletedFalse(pageable);
+
+        if (deletedOnly) {
+            return contactUsRepository.findByIsDeletedTrue(pageable);
+        } else if (!includeDeleted) {
+            return contactUsRepository.findByIsDeletedFalse(pageable);
+        } else {
+            return contactUsRepository.findAll(pageable);
+        }
     }
+
 
     // GET /api/admin/contact/{id}
     @GetMapping("/{id}")

@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { cn } from "@/lib/utils";
 import {
   createAnnouncement,
@@ -54,9 +55,7 @@ import {
   updateAnnouncement,
   type AnnouncementDto,
 } from "@/services/api";
-import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { useNavigate } from "react-router-dom";
-
 
 const AnnouncementSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -64,14 +63,12 @@ const AnnouncementSchema = z.object({
   date: z.date({ required_error: "Please pick a date and time" }),
   time: z.string().regex(/^\d{2}:\d{2}$/g, "Use 24h format HH:MM"),
   summary: z.string().min(10, "Please add a short description"),
-  tags: z.string().optional(),
 });
 
 type AnnouncementForm = z.infer<typeof AnnouncementSchema>;
 
 export default function MakeAnnouncement() {
-
-    const navigate = useNavigate();
+  const navigate = useNavigate();
   const { user, ready } = useAuthGuard();
   const [published, setPublished] = React.useState<AnnouncementDto[]>([]);
   const [editTarget, setEditTarget] = React.useState<AnnouncementDto | null>(
@@ -92,22 +89,21 @@ export default function MakeAnnouncement() {
         minute: "2-digit",
       }),
       summary: "",
-      tags: "",
+      
     },
   });
 
   const watch = form.watch();
 
-
   React.useEffect(() => {
-      if (!ready) return;
-  
-      if (!user) {
-        navigate("/signin", { replace: true });
-      } else if (user.role !== "admin") {
-        navigate("/403", { replace: true });
-      }
-    }, [ready, user, navigate]);
+    if (!ready) return;
+
+    if (!user) {
+      navigate("/signin", { replace: true });
+    } else if (user.role !== "admin") {
+      navigate("/403", { replace: true });
+    }
+  }, [ready, user, navigate]);
   React.useEffect(() => {
     document.title = "Make Announcement | Admin";
     const meta = document.querySelector('meta[name="description"]');
@@ -134,11 +130,6 @@ export default function MakeAnnouncement() {
     const payload = {
       ...values,
       dateTimeISO: scheduled.toISOString(),
-      tags:
-        values.tags
-          ?.split(",")
-          .map((t) => t.trim())
-          .filter(Boolean) ?? [],
     };
 
     try {
@@ -147,11 +138,6 @@ export default function MakeAnnouncement() {
         type: values.type,
         dateTimeISO: scheduled.toISOString(),
         summary: values.summary,
-        tagsCsv: (values.tags ?? "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .join(","),
       };
       const created = await createAnnouncement(apiPayload);
       toast({
@@ -334,25 +320,7 @@ export default function MakeAnnouncement() {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tags (optional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g., database, performance"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Comma-separated keywords to categorize the announcement.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Tags field removed as requested */}
 
             <div className="flex items-center justify-end gap-3">
               <Button

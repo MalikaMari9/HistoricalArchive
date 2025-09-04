@@ -12,4 +12,6 @@ public interface ContactUsRepository extends JpaRepository<ContactUs, Integer> {
 
     // Get all (including deleted)
     Page<ContactUs> findAll(Pageable pageable);
+
+	Page<ContactUs> findByIsDeletedTrue(Pageable pageable);
 }
