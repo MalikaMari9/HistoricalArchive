@@ -1,5 +1,6 @@
 package com.example.demo.repository;
-
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.repository.Modifying;
 import com.example.demo.entity.Rating;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -33,6 +34,12 @@ public interface RatingRepository extends JpaRepository<Rating, Integer> {
              "ORDER BY avgRating DESC " +
              "LIMIT 3") //change limit here
       List<Object[]> findTopRatedArtifacts();
+
+      @Modifying
+      @Transactional
+      @Query("DELETE FROM Rating r WHERE r.userArtifact.userArtifactId IN :userArtifactIds")
+      void deleteByUserArtifactIds(@Param("userArtifactIds") List<Integer> userArtifactIds);
+
   }
  
     

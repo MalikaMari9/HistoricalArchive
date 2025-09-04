@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,4 +22,10 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Integer> {
     void deleteByUserAndArtifact(@Param("userId") Integer userId, @Param("artifactId") String artifactId);
     
     Optional<Bookmark> findByUserUserIdAndUserArtifactArtifactId(Integer userId, String artifactId);
+    
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM Bookmark b WHERE b.userArtifact.userArtifactId IN :userArtifactIds")
+    void deleteByUserArtifactIds(@Param("userArtifactIds") List<Integer> userArtifactIds);
+
 }

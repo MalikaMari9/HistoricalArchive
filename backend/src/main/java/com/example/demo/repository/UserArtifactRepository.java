@@ -83,6 +83,12 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 
 		Optional<UserArtifact> findFirstByArtifactId(String artifactId);
 
+		Optional<UserArtifact> findTopByArtifactIdOrderBySavedAtDesc(String artifactId);
+
+		void deleteByArtifactId(String id);
+
+		boolean existsByArtifactId(String artifactId);
+
 }
 
 

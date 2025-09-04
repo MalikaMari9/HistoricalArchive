@@ -14,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +31,8 @@ import com.example.demo.entity.Artifact;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserArtifact;
 import com.example.demo.repository.ArtifactRepository;
+import com.example.demo.repository.BookmarkRepository;
+import com.example.demo.repository.CommentRepository;
 import com.example.demo.repository.RatingRepository;
 import com.example.demo.repository.UserArtifactRepository;
 import com.example.demo.service.ArtifactService;
@@ -57,6 +60,12 @@ public class ArtifactController {
 
     @Autowired 
     private UserArtifactRepository userArtifactRepository;
+    
+    @Autowired 
+    private CommentRepository commentRepository;
+    
+    @Autowired 
+    private BookmarkRepository bookmarkRepository;
     
     @Autowired
     public ArtifactController(ArtifactRepository artifactRepository) {
@@ -352,34 +361,63 @@ public class ArtifactController {
         }
     }
     
-    // MODIFIED: Added security check
     @DeleteMapping("/{id}")
+    @Transactional
     public ResponseEntity<Void> deleteArtifact(@PathVariable String id, HttpSession session) {
         System.out.println("🗑️ Delete request received for artifact ID: " + id);
+
         User loggedInUser = (User) session.getAttribute("loggedInUser");
         if (loggedInUser == null) {
-            return ResponseEntity.status(401).build(); // 401 Unauthorized
+            return ResponseEntity.status(401).build(); // Unauthorized
         }
 
         Optional<Artifact> existingArtifactOpt = artifactRepository.findById(id);
-        if (existingArtifactOpt.isPresent()) {
-            Artifact existingArtifact = existingArtifactOpt.get();
-
-            // SECURITY CHECK: Ensure the logged-in user owns this artifact
-            if (!existingArtifact.getUploaded_by().equals(loggedInUser.getUsername())) {
-                System.out.println("⛔️ Unauthorized attempt to delete artifact " + id + " by user " + loggedInUser.getUsername());
-                return ResponseEntity.status(403).build(); // 403 Forbidden
-            }
-
-            artifactRepository.deleteById(id);
-            System.out.println("✅ Artifact " + id + " deleted successfully.");
-            return ResponseEntity.noContent().build();
-        } else {
-            System.out.println("⛔️ Artifact " + id + " not found for deletion.");
+        if (existingArtifactOpt.isEmpty()) {
+            System.out.println("⛔️ Artifact " + id + " not found.");
             return ResponseEntity.notFound().build();
         }
+
+        Artifact artifact = existingArtifactOpt.get();
+        if (!artifact.getUploaded_by().equals(loggedInUser.getUsername())) {
+            System.out.println("⛔️ Unauthorized delete attempt by " + loggedInUser.getUsername());
+            return ResponseEntity.status(403).build(); // Forbidden
+        }
+
+        // ✅ STEP 1: Get all userArtifactIds linked to this artifact
+        List<UserArtifact> userArtifacts = userArtifactRepository.findByArtifactId(id);
+        List<Integer> userArtifactIds = userArtifacts.stream()
+            .map(UserArtifact::getUserArtifactId)
+            .toList();
+
+        // ✅ STEP 2: Delete comments
+        System.out.println("🧹 Deleting comments...");
+        commentRepository.deleteByUserArtifactIds(userArtifactIds);
+
+        // ✅ STEP 3: Delete ratings
+        System.out.println("🧹 Deleting ratings...");
+        ratingRepository.deleteByUserArtifactIds(userArtifactIds);
+
+        // ✅ STEP 4: Delete bookmarks
+        System.out.println("🧹 Deleting bookmarks...");
+        bookmarkRepository.deleteByUserArtifactIds(userArtifactIds);
+
+        // ✅ STEP 5: Delete user_artifact entries
+        System.out.println("🧹 Deleting user_artifact entries...");
+        userArtifactRepository.deleteByArtifactId(id);
+
+        // ✅ STEP 6: Delete the artifact itself
+        artifactRepository.deleteById(id);
+        System.out.println("✅ Artifact " + id + " and all related records deleted.");
+
+     // ✅ STEP 2: Delete comment reactions
+        System.out.println("🧹 Deleting comment reactions...");
+        commentRepository.deleteReactionsByUserArtifactIds(userArtifactIds);
+
+        
+        return ResponseEntity.noContent().build(); // 204 No Content
     }
-    
+
+
     @GetMapping("/top-rated")
     public ResponseEntity<List<ArtifactDTO>> getTopRatedArtifacts() {
         try {

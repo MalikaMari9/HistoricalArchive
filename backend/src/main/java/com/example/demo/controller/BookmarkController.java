@@ -59,37 +59,34 @@ public class BookmarkController {
         if (user == null) {
             return ResponseEntity.status(401).build();
         }
-        
-        // Check if already bookmarked
+
+        // Already bookmarked?
         if (bookmarkRepository.existsByUserUserIdAndUserArtifactArtifactId(user.getUserId(), artifactId)) {
             return ResponseEntity.badRequest().build();
         }
-        
-        // Create or get UserArtifact
-        UserArtifact userArtifact = userArtifactRepository.findByArtifactIdAndUserId(artifactId, user.getUserId())
-            .orElseGet(() -> {
-                UserArtifact newUserArtifact = new UserArtifact();
-                newUserArtifact.setArtifactId(artifactId);
-                newUserArtifact.setUserId(user.getUserId());
-                return userArtifactRepository.save(newUserArtifact);
-            });
-        
-        // Create bookmark
+
+        // Get any existing UserArtifact (from any user)
+        Optional<UserArtifact> existingUA = userArtifactRepository.findFirstByArtifactId(artifactId);
+        if (existingUA.isEmpty()) {
+            return ResponseEntity.status(404).body(null);
+        }
+
         Bookmark bookmark = new Bookmark();
         bookmark.setUser(user);
-        bookmark.setUserArtifact(userArtifact);
+        bookmark.setUserArtifact(existingUA.get());  // use existing, not create new
         bookmark.setCreatedAt(LocalDateTime.now());
-        
+
         Bookmark savedBookmark = bookmarkRepository.save(bookmark);
-        
+
         BookmarkDTO dto = new BookmarkDTO();
         dto.setBookmarkId(savedBookmark.getBookmarkId());
         dto.setArtifactId(savedBookmark.getUserArtifact().getArtifactId());
         dto.setUserId(savedBookmark.getUser().getUserId());
         dto.setCreatedAt(savedBookmark.getCreatedAt());
-        
+
         return ResponseEntity.ok(dto);
     }
+
     
     @Transactional
     @DeleteMapping

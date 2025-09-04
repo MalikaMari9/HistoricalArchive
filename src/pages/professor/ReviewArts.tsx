@@ -154,6 +154,7 @@ export function ReviewArts() {
   const focusSubmissionId = searchParams.get("focusSubmissionId");
   const focusId = focusSubmissionId ? Number(focusSubmissionId) : null;
   const statusFromUrl = (searchParams.get("status") || "pending").toLowerCase() as Status;
+const [isAcceptOpen, setIsAcceptOpen] = useState(false);
 
   // UI states
   const [activeTab, setActiveTab] = useState<Status>(
@@ -335,17 +336,17 @@ export function ReviewArts() {
 
   /* ---------------------------- Action handlers ---------------------------- */
 
-  const handleApprove = async (submissionId: number) => {
-    try {
-      await professorAcceptArtifact(submissionId);
-      setSelected(null);
-      //await loadPage(activeTab, pageByStatus[activeTab]);
-      //await loadCounts();
-      await refreshAllTabs();
-    } catch (e) {
-      console.error(e);
-    }
-  };
+const handleApprove = async (submissionId: number) => {
+  try {
+    await professorAcceptArtifact(submissionId);
+    setSelected(null);
+    setIsAcceptOpen(false); // <-- close here
+    await refreshAllTabs();
+  } catch (e) {
+    console.error(e);
+  }
+};
+
 
   const handleReject = async (submissionId: number) => {
     try {
@@ -495,36 +496,19 @@ export function ReviewArts() {
       "
     >
       {/* Accept (opens confirm dialog) */}
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button
-            size="sm"
-            className="w-full justify-start mb-2"
-            onClick={() => setSelected(art)}
-          >
-            <CheckCircle className="h-4 w-4 mr-2" />
-            Accept
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Accept Artwork</DialogTitle>
-          </DialogHeader>
-          {selected && (
-            <div className="space-y-4">
-              <p>
-                Are you sure you want to accept “{selected.title}” by {selected.curatorUsername}?
-              </p>
-              <div className="flex space-x-2">
-                <Button onClick={() => handleApprove(selected.submissionId)} className="flex-1">
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Confirm Acceptance
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+{/* Accept (opens GLOBAL dialog) */}
+<Button
+  size="sm"
+  className="w-full justify-start mb-2"
+  onClick={() => {
+    setSelected(art);
+    setIsAcceptOpen(true);
+  }}
+>
+  <CheckCircle className="h-4 w-4 mr-2" />
+  Accept
+</Button>
+
 
       {/* Reject (opens existing global reject dialog) */}
       <Button
@@ -735,6 +719,58 @@ export function ReviewArts() {
             )}
           </DialogContent>
         </Dialog>
+        {/* Global Accept dialog */}
+<Dialog
+  open={isAcceptOpen}
+  onOpenChange={(open) => {
+    setIsAcceptOpen(open);
+    if (!open) setSelected(null);
+  }}
+>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Accept Artwork</DialogTitle>
+    </DialogHeader>
+
+    {selected && (
+      <div className="space-y-4">
+        <p>
+          Are you sure you want to accept “{selected.title}” by {selected.curatorUsername}?
+        </p>
+
+        <div className="flex items-center gap-3">
+          <img
+            src={
+              normalizeImages(selected)[0] || "/placeholder-art.jpg"
+            }
+            alt={selected.title}
+            className="w-14 h-14 rounded object-cover"
+          />
+          <div className="text-sm text-muted-foreground">
+            <div>Category: {selected.category || "-"}</div>
+            <div>Submitted: {formatDate(selected.submittedAt)}</div>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsAcceptOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => handleApprove(selected.submissionId)}
+          >
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Confirm Acceptance
+          </Button>
+        </div>
+      </div>
+    )}
+  </DialogContent>
+</Dialog>
+
 
         {/* View Details dialog */}
         <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>

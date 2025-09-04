@@ -13,23 +13,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
-import { applyForCurator, getMyPublicProfile, type ViewUserProfile , getCuratorApplicationStatus } from "@/services/api";
+import { applyForCurator, getMyPublicProfile, type ViewUserProfile, getCuratorApplicationStatus } from "@/services/api";
 
-/* --------------------------------- Schema --------------------------------- */
+/* --------------------------------- Limits --------------------------------- */
 
-const formSchema = z.object({
-  fullName: z.string().min(2, "Full name is required"),
-  educationalBackground: z.string().min(10, "Please provide details about your educational background"),
-  professionalCertifications: z.string().optional(),
-  relevantExperience: z.string().min(10, "Please describe your relevant experience"),
-  portfolioWork: z.string().min(10, "Please describe your portfolio or previous work"),
-  motivation: z.string().min(20, "Please explain why you want to become a curator"),
-  // CV handled by input + custom validation; not required
-});
-
-type FormData = z.infer<typeof formSchema>;
-
-/* ------------------------------- Constants -------------------------------- */
+const LIMITS = {
+  fullName: 100, // fname in DB
+  text: 400,     // educational_background, certification, personal_experience, portfolio_link, motivation_reason
+};
 
 const MAX_CV_MB = 5;
 const ALLOWED_CV_TYPES = [
@@ -37,6 +28,62 @@ const ALLOWED_CV_TYPES = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
+
+/* ----------------------------- Zod Validation ----------------------------- */
+
+const formSchema = z.object({
+  fullName: z
+    .string()
+    .min(2, "Full name is required")
+    .max(LIMITS.fullName, `Full name must be ${LIMITS.fullName} characters or less`),
+  educationalBackground: z
+    .string()
+    .min(10, "Please provide details about your educational background")
+    .max(LIMITS.text, `Must be ${LIMITS.text} characters or less`),
+  // Optional, but when present must respect the cap
+  professionalCertifications: z
+    .string()
+    .max(LIMITS.text, `Must be ${LIMITS.text} characters or less`)
+    .optional()
+    .or(z.literal("")), // allow empty string
+  relevantExperience: z
+    .string()
+    .min(10, "Please describe your relevant experience")
+    .max(LIMITS.text, `Must be ${LIMITS.text} characters or less`),
+  portfolioWork: z
+    .string()
+    .min(10, "Please describe your portfolio or previous work")
+    .max(LIMITS.text, `Must be ${LIMITS.text} characters or less`),
+  motivation: z
+    .string()
+    .min(20, "Please explain why you want to become a curator")
+    .max(LIMITS.text, `Must be ${LIMITS.text} characters or less`),
+});
+
+type FormData = z.infer<typeof formSchema>;
+
+/* ------------------------------ Small Helpers ----------------------------- */
+
+function Counter({
+  value,
+  max,
+  className = "",
+}: {
+  value: string | undefined;
+  max: number;
+  className?: string;
+}) {
+  const len = (value ?? "").length;
+  const over = len > max;
+  return (
+    <p
+      aria-live="polite"
+      className={`text-xs text-right mt-1 ${over ? "text-destructive" : "text-muted-foreground"} ${className}`}
+    >
+      {len} / {max}
+    </p>
+  );
+}
 
 /* -------------------------------- Component ------------------------------- */
 
@@ -47,8 +94,8 @@ export default function UpgradeCurator() {
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
-const [applicationStatus, setApplicationStatus] = useState<"pending" | "accepted" | "rejected" | null>(null);
-const [statusLoading, setStatusLoading] = useState(true);
+  const [applicationStatus, setApplicationStatus] = useState<"pending" | "accepted" | "rejected" | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
 
   const acRef = useRef<AbortController | null>(null);
 
@@ -62,6 +109,7 @@ const [statusLoading, setStatusLoading] = useState(true);
       portfolioWork: "",
       motivation: "",
     },
+    mode: "onChange",
   });
 
   const isSubmitting = form.formState.isSubmitting;
@@ -77,15 +125,14 @@ const [statusLoading, setStatusLoading] = useState(true);
         setBootLoading(true);
         const me: ViewUserProfile = await getMyPublicProfile({ signal: ac.signal });
         setUserEmail(me.email ?? null);
-        try {
-  const status = await getCuratorApplicationStatus();
-  setApplicationStatus(status); // will be "pending" | "accepted" | "rejected"
-} catch (err) {
-  console.error("Failed to fetch application status", err);
-}
 
+        try {
+          const status = await getCuratorApplicationStatus();
+          setApplicationStatus(status); // "pending" | "accepted" | "rejected" | null
+        } catch (err) {
+          console.error("Failed to fetch application status", err);
+        }
       } catch (err: any) {
-        // Not logged in or other failure -> send to signin
         toast({
           title: "Session Required",
           description: "Please sign in to submit a curator application.",
@@ -96,7 +143,6 @@ const [statusLoading, setStatusLoading] = useState(true);
       } finally {
         setBootLoading(false);
         setStatusLoading(false);
-
       }
     })();
 
@@ -150,14 +196,14 @@ const [statusLoading, setStatusLoading] = useState(true);
       new Blob(
         [
           JSON.stringify({
-            fname: data.fullName,
-            // TODO: add a real field for DOB when available
+            fname: data.fullName, // <= fname (100 char cap)
+            // TODO: replace with real DOB field when you add it to the form
             dob: new Date().toISOString().split("T")[0],
-            educationalBackground: data.educationalBackground,
-            certification: data.professionalCertifications,
-            personalExperience: data.relevantExperience,
-            portfolioLink: data.portfolioWork,
-            motivationReason: data.motivation,
+            educationalBackground: data.educationalBackground, // <= 400
+            certification: data.professionalCertifications || "", // <= 400
+            personalExperience: data.relevantExperience, // <= 400
+            portfolioLink: data.portfolioWork, // <= 400
+            motivationReason: data.motivation, // <= 400
           }),
         ],
         { type: "application/json" }
@@ -171,7 +217,7 @@ const [statusLoading, setStatusLoading] = useState(true);
         title: "Application Submitted",
         description: "Your curator application has been submitted successfully. We'll review it within 5–7 days.",
       });
-      navigate("/home");
+      navigate("/Index");
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
@@ -184,31 +230,40 @@ const [statusLoading, setStatusLoading] = useState(true);
   const emailDisplay = useMemo(() => userEmail ?? "Loading…", [userEmail]);
 
   /* -------------------------------- Render -------------------------------- */
-if (bootLoading || statusLoading) {
-  return <div className="p-6 text-center">Loading...</div>;
-}
 
-if (applicationStatus === "pending") {
-  return (
-    <div className="p-6 text-center max-w-xl mx-auto">
-      <h2 className="text-2xl font-semibold mb-4">Application Already Submitted</h2>
-      <p className="text-muted-foreground">
-        You’ve already submitted a curator application. Please wait while our professors review it.
-      </p>
-    </div>
-  );
-}
+  if (bootLoading || statusLoading) {
+    return <div className="p-6 text-center">Loading...</div>;
+  }
 
-if (applicationStatus === "accepted") {
-  return (
-    <div className="p-6 text-center max-w-xl mx-auto">
-      <h2 className="text-2xl font-semibold mb-4">You’re Already a Curator</h2>
-      <p className="text-muted-foreground">
-        Congratulations! You’ve already been accepted as a curator. There’s no need to reapply.
-      </p>
-    </div>
-  );
-}
+  if (applicationStatus === "pending") {
+    return (
+      <div className="p-6 text-center max-w-xl mx-auto">
+        <h2 className="text-2xl font-semibold mb-4">Application Already Submitted</h2>
+        <p className="text-muted-foreground">
+          You’ve already submitted a curator application. Please wait while our professors review it.
+        </p>
+      </div>
+    );
+  }
+
+  if (applicationStatus === "accepted") {
+    return (
+      <div className="p-6 text-center max-w-xl mx-auto">
+        <h2 className="text-2xl font-semibold mb-4">You’re Already a Curator</h2>
+        <p className="text-muted-foreground">
+          Congratulations! You’ve already been accepted as a curator. There’s no need to reapply.
+        </p>
+      </div>
+    );
+  }
+
+  // Watch values for live counters
+  const fullNameVal = form.watch("fullName");
+  const eduVal = form.watch("educationalBackground");
+  const certVal = form.watch("professionalCertifications");
+  const expVal = form.watch("relevantExperience");
+  const portVal = form.watch("portfolioWork");
+  const motivVal = form.watch("motivation");
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -264,7 +319,7 @@ if (applicationStatus === "accepted") {
                     <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
                     <div className="mb-4">
                       <FormLabel className="font-medium">Registered Email</FormLabel>
-                      <p className="text-sm text-muted-foreground">{bootLoading ? "Loading…" : emailDisplay}</p>
+                      <p className="text-sm text-muted-foreground">{emailDisplay}</p>
                     </div>
 
                     <FormField
@@ -276,8 +331,9 @@ if (applicationStatus === "accepted") {
                             Full Name <span className="text-destructive">*</span>
                           </FormLabel>
                           <FormControl>
-                            <Input {...field} disabled={isSubmitting} />
+                            <Input {...field} disabled={isSubmitting} maxLength={LIMITS.fullName} />
                           </FormControl>
+                          <Counter value={fullNameVal} max={LIMITS.fullName} />
                           <FormMessage />
                         </FormItem>
                       )}
@@ -297,8 +353,9 @@ if (applicationStatus === "accepted") {
                               Educational Background <span className="text-destructive">*</span>
                             </FormLabel>
                             <FormControl>
-                              <Textarea {...field} rows={3} disabled={isSubmitting} />
+                              <Textarea {...field} rows={3} disabled={isSubmitting} maxLength={LIMITS.text} />
                             </FormControl>
+                            <Counter value={eduVal} max={LIMITS.text} />
                             <FormMessage />
                           </FormItem>
                         )}
@@ -311,8 +368,9 @@ if (applicationStatus === "accepted") {
                           <FormItem>
                             <FormLabel>Professional Certifications</FormLabel>
                             <FormControl>
-                              <Textarea {...field} rows={2} disabled={isSubmitting} />
+                              <Textarea {...field} rows={2} disabled={isSubmitting} maxLength={LIMITS.text} />
                             </FormControl>
+                            <Counter value={certVal} max={LIMITS.text} />
                             <FormMessage />
                           </FormItem>
                         )}
@@ -327,8 +385,9 @@ if (applicationStatus === "accepted") {
                               Relevant Experience <span className="text-destructive">*</span>
                             </FormLabel>
                             <FormControl>
-                              <Textarea {...field} rows={3} disabled={isSubmitting} />
+                              <Textarea {...field} rows={3} disabled={isSubmitting} maxLength={LIMITS.text} />
                             </FormControl>
+                            <Counter value={expVal} max={LIMITS.text} />
                             <FormMessage />
                           </FormItem>
                         )}
@@ -343,8 +402,9 @@ if (applicationStatus === "accepted") {
                               Portfolio/Previous Work <span className="text-destructive">*</span>
                             </FormLabel>
                             <FormControl>
-                              <Textarea {...field} rows={3} disabled={isSubmitting} />
+                              <Textarea {...field} rows={3} disabled={isSubmitting} maxLength={LIMITS.text} />
                             </FormControl>
+                            <Counter value={portVal} max={LIMITS.text} />
                             <FormMessage />
                           </FormItem>
                         )}
@@ -402,8 +462,9 @@ if (applicationStatus === "accepted") {
                             Why do you want to become a curator? <span className="text-destructive">*</span>
                           </FormLabel>
                           <FormControl>
-                            <Textarea {...field} rows={4} disabled={isSubmitting} />
+                            <Textarea {...field} rows={4} disabled={isSubmitting} maxLength={LIMITS.text} />
                           </FormControl>
+                          <Counter value={motivVal} max={LIMITS.text} />
                           <FormMessage />
                         </FormItem>
                       )}

@@ -100,19 +100,20 @@ export const Sidebar = ({
                 </Avatar>
                 <div>
                   <p className="font-medium text-foreground text-lg">{user?.username || 'User'}</p>
-                  <Link
-                    to={
-                      userRole === 'admin' ? '/admin'
-                        : userRole === 'professor' ? '/professor'
-                          : userRole === 'curator' ? '/curator'
-                            : '/visitor'
-                    }
-                    onClick={handleItemClick}
-                    className="text-muted-foreground capitalize hover:text-primary transition-colors underline-offset-2 hover:underline"
-                  >
-                    {userRole} dashboard
+{userRole !== 'visitor' && (
+  <Link
+    to={
+      userRole === 'admin' ? '/admin'
+        : userRole === 'professor' ? '/professor'
+          : '/curator'
+    }
+    onClick={handleItemClick}
+    className="text-muted-foreground capitalize hover:text-primary transition-colors underline-offset-2 hover:underline"
+  >
+    {userRole} dashboard
+  </Link>
+)}
 
-                  </Link>
                 </div>
               </div>
             </div>

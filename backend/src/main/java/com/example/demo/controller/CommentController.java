@@ -116,23 +116,15 @@ public class CommentController {
                         .body(Map.of("error", "Artifact ID is required"));
             }
 
-            // 3. Find or create UserArtifact relationship
-         // try exact pair
-            Optional<UserArtifact> existing =
-                userArtifactRepository.findByArtifactIdAndUserId(commentRequest.getArtifactId(), user.getUserId());
+         // Ensure the artifact has a valid UserArtifact (from any user)
+            Optional<UserArtifact> userArtifactOpt = userArtifactRepository.findFirstByArtifactId(commentRequest.getArtifactId());
 
-            UserArtifact userArtifact = existing.orElseGet(() -> {
-                // double-check in case of concurrent creation
-                if (!userArtifactRepository.existsByArtifactIdAndUserId(commentRequest.getArtifactId(), user.getUserId())) {
-                    UserArtifact ua = new UserArtifact();
-                    ua.setArtifactId(commentRequest.getArtifactId());
-                    ua.setUserId(user.getUserId());
-                    return userArtifactRepository.save(ua);
-                }
-                // someone else just created it; fetch again
-                return userArtifactRepository.findByArtifactIdAndUserId(commentRequest.getArtifactId(), user.getUserId())
-                        .orElseThrow(); // shouldn't happen
-            });
+            if (userArtifactOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "Artifact not found in system"));
+            }
+
+            UserArtifact userArtifact = userArtifactOpt.get();
 
 
             // 4. Create and save comment

@@ -90,7 +90,8 @@ useEffect(() => {
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
             </Button>
-            <Button variant="outline" size="lg" asChild className="border-2 border-warm-white text-warm-white hover:bg-warm-white hover:text-brown-dark">
+            <Button variant="outline" size="lg" asChild className="border-primary text-primary hover:bg-primary hover:text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
+>
               <Link to="/about">Learn More</Link>
             </Button>
           </div>
@@ -210,7 +211,8 @@ useEffect(() => {
             <Button
               size="lg"
               variant="outline"
-              className="border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary"
+              className="border-primary text-primary hover:bg-primary hover:text-primary-foreground focus-visible:ring-2 focus-visible:ring-primary/50"
+
               asChild
             >
               <Link to="/signin">Sign In</Link>

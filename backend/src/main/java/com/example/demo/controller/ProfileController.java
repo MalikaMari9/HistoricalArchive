@@ -116,10 +116,11 @@ public class ProfileController {
             
             // Set relative path in database
             loggedInUser.setProfilePath("/" + UPLOAD_DIR + fileName);
-        } else if (updateRequest.getProfilePicture() == null || updateRequest.getProfilePicture().isEmpty()) {
-            // If no file and profilePicture is empty in request, clear the profile path
+        } else if (updateRequest.getProfilePicture() != null && updateRequest.getProfilePicture().equals("null")) {
+            // Only clear if profilePicture was explicitly set to null (as a string)
             loggedInUser.setProfilePath(null);
         }
+
 
         // Save changes
         userRepository.save(loggedInUser);

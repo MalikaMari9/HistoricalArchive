@@ -1,5 +1,6 @@
 package com.example.demo.controller;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,7 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.demo.dto.ArtifactDTO;
 import com.example.demo.entity.Artifact;
+import com.example.demo.entity.UserArtifact;
 import com.example.demo.repository.ArtifactRepository;
+import com.example.demo.repository.UserArtifactRepository;
 
 @RestController
 @RequestMapping("/api/admin/artworks")
@@ -25,10 +28,12 @@ import com.example.demo.repository.ArtifactRepository;
 public class AdminArtworksController {
 
     private final ArtifactRepository artifactRepository;
+    private final UserArtifactRepository userArtifactRepository;
 
     @Autowired
-    public AdminArtworksController(ArtifactRepository artifactRepository) {
+    public AdminArtworksController(ArtifactRepository artifactRepository, UserArtifactRepository userArtifactRepository) {
         this.artifactRepository = artifactRepository;
+        this.userArtifactRepository = userArtifactRepository;
     }
 
     @GetMapping
@@ -41,6 +46,16 @@ public class AdminArtworksController {
         Page<ArtifactDTO> dtoPage = artifactPage.map(this::convertToDTO);
         return ResponseEntity.ok(dtoPage);
     }
+    
+    @GetMapping("/all")
+    public ResponseEntity<List<ArtifactDTO>> listAllArtworks() {
+        List<Artifact> allArtifacts = artifactRepository.findAll();
+        List<ArtifactDTO> dtoList = allArtifacts.stream()
+            .map(this::convertToDTO)
+            .toList();
+        return ResponseEntity.ok(dtoList);
+    }
+
 
     @GetMapping("/{id}")
     public ResponseEntity<ArtifactDTO> getArtwork(@PathVariable("id") String id) {
@@ -76,9 +91,27 @@ public class AdminArtworksController {
         dto.setUpdated_at(artifact.getUpdated_at());
         dto.setImages(artifact.getImages());
         dto.setImage_url(artifact.getImage_url());
+        
+        // Get real status from UserArtifact table
+        String status = getArtifactStatus(artifact.getId());
+        dto.setStatus(status);
+        
         dto.setAverageRating(0);
         dto.setTotalRatings(0);
         return dto;
+    }
+    
+    private String getArtifactStatus(String artifactId) {
+        // Find the most recent UserArtifact submission for this artifact
+        Optional<UserArtifact> latestSubmission = userArtifactRepository
+            .findTopByArtifactIdOrderBySavedAtDesc(artifactId);
+            
+        if (latestSubmission.isPresent()) {
+            return latestSubmission.get().getStatus().name();
+        }
+        
+        // If no UserArtifact record exists, default to "not_submitted"
+        return "not_submitted";
     }
 }
 

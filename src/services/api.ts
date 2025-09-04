@@ -313,6 +313,11 @@ export const fetchTopArtworks = async (): Promise<
 /*                          ARTWORKS MANAGEMENT (Admin)                       */
 /* -------------------------------------------------------------------------- */
 
+
+/* -------------------------------------------------------------------------- */
+/*                          ARTWORKS MANAGEMENT (Admin)                       */
+/* -------------------------------------------------------------------------- */
+
 export interface AdminArtworkDto {
   _id: string;
   title: string;
@@ -320,8 +325,26 @@ export interface AdminArtworkDto {
   uploaded_by?: string;
   uploaded_at?: string;
   image_url?: string;
+  images?: Array<{
+    date?: string;
+    copyright?: string;
+    imageid?: number;
+    idsid?: number;
+    format?: string;
+    description?: string;
+    technique?: string;
+    renditionnumber?: string;
+    displayorder?: number;
+    baseimageurl?: string;
+    alttext?: string;
+    width?: number;
+    publiccaption?: string;
+    iiifbaseuri?: string;
+    height?: number;
+  }>;
   status?: string;
 }
+
 
 export interface PageResponse<T> {
   content: T[];
@@ -330,6 +353,16 @@ export interface PageResponse<T> {
   number: number; // current page
   size: number; // page size
 }
+
+export const adminListAllArtworks = async (
+  opts?: { signal?: AbortSignal }
+): Promise<AdminArtworkDto[]> => {
+  const res = await api.get<AdminArtworkDto[]>("/admin/artworks/all", {
+    signal: opts?.signal as any,
+  });
+  return res.data;
+};
+
 
 // services/api.ts (or wherever adminListArtworks lives)
 export const adminListArtworks = async (
@@ -343,7 +376,6 @@ export const adminListArtworks = async (
   });
   return res.data;
 };
-
 
 export const adminDeleteArtwork = async (id: string): Promise<void> => {
   await api.delete(`/admin/artworks/${id}`);

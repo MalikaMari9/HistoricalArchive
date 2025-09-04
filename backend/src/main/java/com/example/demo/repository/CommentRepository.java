@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.Collection;
 import java.util.List;
 
@@ -38,4 +40,17 @@ public interface CommentRepository extends JpaRepository<Comment, Integer> {
     @Modifying
     @Query("DELETE FROM Comment c WHERE c.commentId = :commentId")
     void deleteById(@Param("commentId") Integer commentId);
+
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM Comment c WHERE c.userArtifact.userArtifactId IN :userArtifactIds")
+    void deleteByUserArtifactIds(@Param("userArtifactIds") List<Integer> userArtifactIds);
+
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM comment_reactions WHERE comment_id IN (" +
+                   "SELECT c.comment_id FROM comment_tbl c WHERE c.user_artifact_id IN :userArtifactIds)", 
+           nativeQuery = true)
+    void deleteReactionsByUserArtifactIds(@Param("userArtifactIds") List<Integer> userArtifactIds);
+
 }
