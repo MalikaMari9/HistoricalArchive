@@ -47,15 +47,11 @@ public class CuratorApplicationController {
             HttpSession session
     ) {
         // 1. Session check
-        User user = (User) session.getAttribute("loggedInUser");
+                 User user = (User) session.getAttribute("loggedInUser");
         if (user == null) {
-            // For demo purposes, if no user is in the session, use a default user.
-            // This should be replaced with proper authentication in a real application.
-            user = userRepository.findById(1).orElse(null);
-            if (user == null) {
-                return ResponseEntity.status(401).body("Login required and demo user not found.");
-            }
+            return ResponseEntity.status(401).body("Login required.");
         }
+
 
         // 2. Check for duplicate or pending applications
         Optional<CuratorApplication> existingApp = curatorApplicationRepo.findFirstByUser(user);

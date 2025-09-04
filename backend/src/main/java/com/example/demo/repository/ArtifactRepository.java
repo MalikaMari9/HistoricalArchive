@@ -94,4 +94,6 @@ public interface ArtifactRepository extends MongoRepository<Artifact, String>, C
     
     @Query("{ '_id': { $in: ?0 } }")
     List<Artifact> findByIdsIn(List<String> artifactIds);
+
+	List<Artifact> findByTitleContainingIgnoreCase(String needle);
 }

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -156,10 +157,43 @@ public class ArtifactController {
     
    
     @GetMapping("/{id:[a-zA-Z]_[0-9A-Za-z]+}")
-    public ResponseEntity<Artifact> getArtifactById(@PathVariable String id) {
-        return artifactRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+    public ResponseEntity<Artifact> getArtifactById(
+            @PathVariable String id,
+            HttpSession session
+    ) {
+        Optional<Artifact> opt = artifactRepository.findById(id);
+        if (opt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        User loggedIn = (User) session.getAttribute("loggedInUser");
+        boolean canView = false;
+
+        if (loggedIn == null) {
+            // Not logged in → check for public
+            canView = userArtifactRepository.existsByArtifactIdAndStatus(id, ApplicationStatus.accepted);
+        } else {
+            switch (loggedIn.getRole()) {
+                case admin, professor -> canView = true;
+
+                case curator -> {
+                    // Curator: can only view if they uploaded it, OR it’s accepted
+                    canView = userArtifactRepository.existsByArtifactIdAndUserId(id, loggedIn.getUserId())
+                            || userArtifactRepository.existsByArtifactIdAndStatus(id, ApplicationStatus.accepted);
+                }
+
+                case visitor -> {
+                    // Visitor: same as public
+                    canView = userArtifactRepository.existsByArtifactIdAndStatus(id, ApplicationStatus.accepted);
+                }
+            }
+        }
+
+        if (!canView) {
+            return ResponseEntity.notFound().build(); // Don't leak private data
+        }
+
+        return ResponseEntity.ok(opt.get());
     }
 
     
@@ -270,6 +304,13 @@ public class ArtifactController {
         Map<String, UserArtifact> uaMap = userArtifacts.stream()
                 .collect(Collectors.toMap(UserArtifact::getArtifactId, ua -> ua));
 
+     // ✅ Filter out UserArtifacts that refer to missing/deleted MongoDB records
+        Set<String> validIds = artifacts.stream().map(Artifact::getId).collect(Collectors.toSet());
+        userArtifacts = userArtifacts.stream()
+            .filter(ua -> validIds.contains(ua.getArtifactId()))
+            .toList();
+
+        
         // Step 3: Optional search filter
         List<ArtifactDTO> allDto = artifacts.stream()
         	    .filter(artifact -> {

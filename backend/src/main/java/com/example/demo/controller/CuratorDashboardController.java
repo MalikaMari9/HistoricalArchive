@@ -58,24 +58,32 @@ public class CuratorDashboardController {
 
         List<Artifact> artifacts = artifactRepository.findAllById(artifactIds);
 
-        // Create a map of artifactId -> Artifact
-        Map<String, Artifact> artifactMap = artifacts.stream()
-                .collect(Collectors.toMap(Artifact::getId, a -> a));
+     // Create a map of artifactId -> Artifact
+     Map<String, Artifact> artifactMap = artifacts.stream()
+             .collect(Collectors.toMap(Artifact::getId, a -> a));
 
-        List<CuratorArtworkItem> items = new ArrayList<>();
-        for (UserArtifact ua : userArtifactPage) {
-            Artifact artifact = artifactMap.get(ua.getArtifactId());
-            if (artifact == null) continue; // skip if missing in MongoDB
+     // 🔽 Insert updated logic HERE
+     Set<String> validIds = artifacts.stream()
+             .map(Artifact::getId)
+             .collect(Collectors.toSet());
 
-            CuratorArtworkItem dto = new CuratorArtworkItem();
-            dto.setId(artifact.getId());
-            dto.setTitle(artifact.getTitle());
-            dto.setStatus(ua.getStatus().name().toLowerCase());
-            dto.setSubmissionDate(artifact.getUploaded_at() != null
-                    ? artifact.getUploaded_at().toString()
-                    : "");
-            items.add(dto);
-        }
+     List<UserArtifact> validUserArtifacts = userArtifactPage.getContent().stream()
+             .filter(ua -> validIds.contains(ua.getArtifactId()))
+             .toList();
+
+     List<CuratorArtworkItem> items = new ArrayList<>();
+     for (UserArtifact ua : validUserArtifacts) {
+         Artifact artifact = artifactMap.get(ua.getArtifactId());
+         CuratorArtworkItem dto = new CuratorArtworkItem();
+         dto.setId(artifact.getId());
+         dto.setTitle(artifact.getTitle());
+         dto.setStatus(ua.getStatus().name().toLowerCase());
+         dto.setSubmissionDate(artifact.getUploaded_at() != null
+                 ? artifact.getUploaded_at().toString()
+                 : "");
+         items.add(dto);
+     }
+
 
         Map<String, Object> response = new HashMap<>();
         response.put("items", items);
@@ -95,23 +103,18 @@ public class CuratorDashboardController {
             return ResponseEntity.status(401).build();
         }
 
-        List<Artifact> myArtifacts = artifactRepository.findByUploaded_by(loggedInUser.getUsername());
-        List<String> artifactIds = myArtifacts.stream()
-                .map(Artifact::getId)
-                .toList();
+        List<UserArtifact> userArtifacts = userArtifactRepository.findByUserId(loggedInUser.getUserId());
 
-        List<UserArtifact> userArtifacts = userArtifactRepository.findByUserIdAndArtifactIdIn(
-                loggedInUser.getUserId(), artifactIds);
-
-        Map<String, UserArtifact> userArtifactMap = userArtifacts.stream()
-                .collect(Collectors.toMap(UserArtifact::getArtifactId, ua -> ua));
-
-        long total = myArtifacts.size();
+        long total = userArtifacts.size();
         long accepted = 0, pending = 0, rejected = 0;
 
-        for (Artifact artifact : myArtifacts) {
-            String status = getStatus(userArtifactMap.get(artifact.getId()));
-            switch (status) {
+        for (UserArtifact ua : userArtifacts) {
+            if (ua.getStatus() == null) {
+                pending++;
+                continue;
+            }
+
+            switch (ua.getStatus().name().toLowerCase()) {
                 case "accepted" -> accepted++;
                 case "rejected" -> rejected++;
                 default -> pending++;
@@ -123,8 +126,6 @@ public class CuratorDashboardController {
         stats.setPendingArtworks(pending);
         stats.setApprovedArtworks(accepted);
         stats.setRejectedArtworks(rejected);
-
-        System.out.println("Stats - Total: " + total + ", accepted: " + accepted + ", Rejected: " + rejected + ", Pending: " + pending);
 
         return ResponseEntity.ok(stats);
     }

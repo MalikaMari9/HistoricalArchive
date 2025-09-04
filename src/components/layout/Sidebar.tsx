@@ -160,6 +160,7 @@ export const Sidebar = ({
                     <Link to="/professor/review" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><CheckCircle className="icon" /><span>Review Arts</span></Link>
                     <Link to="/professor/curator-applications" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><UserCheck className="icon" /><span>Review Curators</span></Link>
                     <Link to="/professor/recent-decisions" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><FileSearch className="icon" /><span>Professor Audit</span></Link>
+                    <Link to="/professor/all-artifacts" onClick={handleItemClick} className="flex items-center space-x-3 px-0 py-3 text-foreground hover:text-primary transition-colors"><FileSearch className="icon" /><span>All Artifacts</span></Link>
                     
                   </div>
                 )}

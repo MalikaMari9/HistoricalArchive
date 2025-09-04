@@ -2,9 +2,15 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.UserArtifactDTO;
 import com.example.demo.entity.UserArtifact;
+import com.example.demo.entity.UserRole;
 import com.example.demo.repository.UserArtifactRepository;
+
+import jakarta.servlet.http.HttpSession;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import com.example.demo.entity.ApplicationStatus;
+import com.example.demo.entity.User;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,22 +28,46 @@ public class UserArtifactController {
     private UserArtifactRepository userArtifactRepository;
 
     @PostMapping
-    public ResponseEntity<UserArtifactDTO> createUserArtifact(@RequestBody UserArtifactDTO userArtifactDTO) {
+    public ResponseEntity<UserArtifactDTO> createUserArtifact(
+            @RequestBody UserArtifactDTO userArtifactDTO,
+            HttpSession session
+    ) {
+        // ✅ 1. Check session
+        User loggedInUser = (User) session.getAttribute("loggedInUser");
+        if (loggedInUser == null) {
+            return ResponseEntity.status(401).build(); // Unauthorized
+        }
+
+        // ✅ 2. Ensure user is only submitting for themselves
+        if (!loggedInUser.getUserId().equals(userArtifactDTO.getUserId())) {
+            return ResponseEntity.status(403).build(); // Forbidden
+        }
+
+        // ✅ 3. Prevent duplicates
+        boolean exists = userArtifactRepository.existsByArtifactIdAndUserId(
+            userArtifactDTO.getArtifactId(), userArtifactDTO.getUserId()
+        );
+        if (exists) {
+            return ResponseEntity.status(409).build(); // Conflict
+        }
+
+        // ✅ 4. Save new entry
         UserArtifact userArtifact = new UserArtifact();
         userArtifact.setArtifactId(userArtifactDTO.getArtifactId());
-        userArtifact.setUserId(userArtifactDTO.getUserId());
+        userArtifact.setUserId(loggedInUser.getUserId());
         userArtifact.setStatus(ApplicationStatus.pending);
         userArtifact.setSavedAt(Instant.now());
 
         UserArtifact saved = userArtifactRepository.save(userArtifact);
 
-        // Update and return original DTO (or build a new one if you prefer)
+        // ✅ 5. Return updated DTO
         userArtifactDTO.setUserArtifactId(saved.getUserArtifactId());
         userArtifactDTO.setSavedAt(saved.getSavedAt());
         userArtifactDTO.setStatus(saved.getStatus().name());
-        
+
         return ResponseEntity.ok(userArtifactDTO);
     }
+
 
     @GetMapping("/exists")
     public ResponseEntity<Boolean> checkIfArtifactSavedByUser(
@@ -80,32 +110,48 @@ public class UserArtifactController {
             @PathVariable Integer userArtifactId,
             @RequestParam ApplicationStatus status,
             @RequestParam(required = false) String reason,
-            @RequestParam(required = false) Integer professorId) {
-        
-        Optional<UserArtifact> optionalUserArtifact = userArtifactRepository.findById(userArtifactId);
-        
-        if (optionalUserArtifact.isPresent()) {
-            UserArtifact userArtifact = optionalUserArtifact.get();
-            userArtifact.setStatus(status);
-            if (reason != null) userArtifact.setReason(reason);
-            if (professorId != null) userArtifact.setProfessorId(professorId);
-            
-            UserArtifact updated = userArtifactRepository.save(userArtifact);
-            
-            UserArtifactDTO dto = new UserArtifactDTO();
-            dto.setUserArtifactId(updated.getUserArtifactId());
-            dto.setArtifactId(updated.getArtifactId());
-            dto.setUserId(updated.getUserId());
-            dto.setStatus(updated.getStatus().name());
-            dto.setSavedAt(updated.getSavedAt());
-            dto.setReason(updated.getReason());
-            dto.setProfessorId(updated.getProfessorId());
-            
-            return ResponseEntity.ok(dto);
+            @RequestParam(required = false) Integer professorId,
+            HttpSession session
+    ) {
+        // ✅ 1. Check session
+        User loggedInUser = (User) session.getAttribute("loggedInUser");
+        if (loggedInUser == null) {
+            return ResponseEntity.status(401).build(); // Unauthorized
         }
-        
-        return ResponseEntity.notFound().build();
+
+        // ✅ 2. Role check: ONLY professors (or admins if you allow)
+        if (loggedInUser.getRole() != UserRole.professor) {
+            return ResponseEntity.status(403).body(null); // Forbidden
+        }
+
+        // ✅ 3. Find record
+        Optional<UserArtifact> optionalUserArtifact = userArtifactRepository.findById(userArtifactId);
+        if (optionalUserArtifact.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // ✅ 4. Apply changes
+        UserArtifact userArtifact = optionalUserArtifact.get();
+        userArtifact.setStatus(status);
+        userArtifact.setSavedAt(Instant.now());
+        userArtifact.setReason(reason != null ? reason : null);
+        userArtifact.setProfessorId(professorId != null ? professorId : loggedInUser.getUserId());
+
+        UserArtifact updated = userArtifactRepository.save(userArtifact);
+
+        // ✅ 5. Return DTO
+        UserArtifactDTO dto = new UserArtifactDTO();
+        dto.setUserArtifactId(updated.getUserArtifactId());
+        dto.setArtifactId(updated.getArtifactId());
+        dto.setUserId(updated.getUserId());
+        dto.setStatus(updated.getStatus().name());
+        dto.setSavedAt(updated.getSavedAt());
+        dto.setReason(updated.getReason());
+        dto.setProfessorId(updated.getProfessorId());
+
+        return ResponseEntity.ok(dto);
     }
+
 
     @DeleteMapping("/{userArtifactId}")
     public ResponseEntity<Void> deleteUserArtifact(@PathVariable Integer userArtifactId) {

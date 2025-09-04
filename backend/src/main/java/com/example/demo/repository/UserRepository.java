@@ -27,6 +27,8 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 	List<User> findByRole(UserRole role);
 	
 	 long countByCreatedAtAfter(LocalDateTime createdAt);
+
+	 List<User> findByUsernameContainingIgnoreCase(String needle);
 	 
 	
 

@@ -25,11 +25,15 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -866,6 +870,139 @@ long curatorPending = curatorApplicationRepo.countByApplicationStatus(Applicatio
     private static String safe(String str) {
         return (str == null) ? "" : str;
     }
+    
+ // In your ProfessorDashboardController (same class that has @RequestMapping("/api/professor/dashboard"))
+    @GetMapping("/all-artifacts")
+    public ResponseEntity<Map<String, Object>> listAllArtifacts(
+            HttpSession session,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String q,                // NEW
+            @RequestParam(defaultValue = "all") String status        // NEW: pending|accepted|rejected|all
+    ) {
+        User professor = (User) session.getAttribute("loggedInUser");
+        if (professor == null || !professor.getRole().name().equalsIgnoreCase("professor")) {
+            return ResponseEntity.status(403).build();
+        }
+
+        // --- Parse status (case-insensitive; "all" means no filter) ---
+        ApplicationStatus statusEnum = null;
+        if (status != null && !"all".equalsIgnoreCase(status)) {
+            for (ApplicationStatus s : ApplicationStatus.values()) {
+                if (s.name().equalsIgnoreCase(status)) {
+                    statusEnum = s;
+                    break;
+                }
+            }
+        }
+
+        // --- Build the candidate UA list according to q + status ---
+        List<UserArtifact> uaPool = new ArrayList<>();
+
+        boolean hasQuery = q != null && !q.trim().isEmpty();
+        if (hasQuery) {
+            String needle = q.trim();
+
+            // 1) match by artifact title
+            //    (Make sure ArtifactRepository has: List<Artifact> findByTitleContainingIgnoreCase(String title);)
+            List<Artifact> matchedArts = artifactRepository.findByTitleContainingIgnoreCase(needle);
+            List<String> matchedArtIds = matchedArts.stream().map(Artifact::getId).toList();
+
+            // 2) match by curator username
+            //    (Make sure UserRepository has: List<User> findByUsernameContainingIgnoreCase(String username);)
+            List<User> matchedCurators = userRepository.findByUsernameContainingIgnoreCase(needle);
+            List<Integer> matchedCuratorIds = matchedCurators.stream().map(User::getUserId).toList();
+
+            // 3) fetch UA by (artifactId IN ...) OR (userId IN ...), with optional status
+            if (!matchedArtIds.isEmpty()) {
+                if (statusEnum != null) {
+                    uaPool.addAll(userArtifactRepository.findByArtifactIdInAndStatus(matchedArtIds, statusEnum));
+                } else {
+                    uaPool.addAll(userArtifactRepository.findByArtifactIdIn(matchedArtIds));
+                }
+            }
+            if (!matchedCuratorIds.isEmpty()) {
+                if (statusEnum != null) {
+                    uaPool.addAll(userArtifactRepository.findByUserIdInAndStatus(matchedCuratorIds, statusEnum));
+                } else {
+                    uaPool.addAll(userArtifactRepository.findByUserIdIn(matchedCuratorIds));
+                }
+            }
+
+            // de-duplicate by UA id
+            Map<Integer, UserArtifact> uniq = new LinkedHashMap<>();
+            for (UserArtifact ua : uaPool) uniq.put(ua.getUserArtifactId(), ua);
+            uaPool = new ArrayList<>(uniq.values());
+        } else {
+            // No search term: pull by status (or everything)
+            if (statusEnum != null) {
+                uaPool = userArtifactRepository.findByStatus(statusEnum);
+            } else {
+                uaPool = userArtifactRepository.findAll(); // if your repo returns List; else convert Iterable
+            }
+        }
+
+        // --- keep only UAs whose artifact still exists in Mongo ---
+        List<String> allArtIds = uaPool.stream().map(UserArtifact::getArtifactId).toList();
+        List<Artifact> existingArts = artifactRepository.findAllById(allArtIds);
+        Set<String> validIds = existingArts.stream().map(Artifact::getId).collect(Collectors.toSet());
+        uaPool = uaPool.stream().filter(ua -> validIds.contains(ua.getArtifactId())).toList();
+
+        // --- sort (newest first by savedAt) ---
+        uaPool = uaPool.stream()
+            .sorted(Comparator.comparing(UserArtifact::getSavedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+            .toList();
+
+        // --- totals BEFORE pagination ---
+        long total = uaPool.size();
+
+        // --- manual pagination ---
+        int from = Math.max(0, page * size);
+        int to = Math.min(from + size, uaPool.size());
+        List<UserArtifact> pageSlice = from < to ? uaPool.subList(from, to) : List.of();
+
+        // --- fetch only what we need for the page slice ---
+        List<String> sliceArtIds = pageSlice.stream().map(UserArtifact::getArtifactId).toList();
+        List<Integer> sliceCuratorIds = pageSlice.stream().map(UserArtifact::getUserId).distinct().toList();
+        List<Integer> sliceProfIds = pageSlice.stream().map(UserArtifact::getProfessorId).filter(Objects::nonNull).distinct().toList();
+
+        Map<String, Artifact> artifactMap = artifactRepository.findAllById(sliceArtIds).stream()
+                .collect(Collectors.toMap(Artifact::getId, a -> a));
+        Map<Integer, User> curatorMap = userRepository.findAllById(sliceCuratorIds).stream()
+                .collect(Collectors.toMap(User::getUserId, u -> u));
+        Map<Integer, User> professorMap = userRepository.findAllById(sliceProfIds).stream()
+                .collect(Collectors.toMap(User::getUserId, u -> u));
+
+        // --- build DTOs ---
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (UserArtifact ua : pageSlice) {
+            Artifact art = artifactMap.get(ua.getArtifactId());
+            User curator = curatorMap.get(ua.getUserId());
+            User assignedProf = ua.getProfessorId() != null ? professorMap.get(ua.getProfessorId()) : null;
+            if (art == null || curator == null) continue;
+
+            Map<String, Object> dto = new HashMap<>();
+            dto.put("artifactId", art.getId());
+            dto.put("title", art.getTitle());
+            dto.put("status", ua.getStatus() != null ? ua.getStatus().name().toLowerCase() : "pending");
+            dto.put("submissionDate", art.getUploaded_at() != null ? art.getUploaded_at().toString() : "");
+            dto.put("curatorId", curator.getUserId());
+            dto.put("curatorName", curator.getUsername());
+            dto.put("assignedProfessorId", assignedProf != null ? assignedProf.getUserId() : null);
+            dto.put("assignedProfessorName", assignedProf != null ? assignedProf.getUsername() : null);
+            dto.put("canReview", ua.getProfessorId() != null && ua.getProfessorId().equals(professor.getUserId()));
+            items.add(dto);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("items", items);
+        response.put("total", total); // total across ALL matches (q + status), not just this page
+        response.put("page", page);
+        response.put("size", size);
+        return ResponseEntity.ok(response);
+    }
+
+
 
 
 

@@ -42,6 +42,7 @@ import MakeAnnouncement from "./pages/admin/MakeAnnoucement";
 import ManageAnnouncements from "./pages/admin/ManageAnnouncements";
 import ManageUsers from "./pages/admin/ManageUsers";
 import AdminContactInbox from "./pages/admin/AdminInbox";
+import ProfessorAllArtifacts from "./pages/professor/AllArtifact";
 // import ReviewArts from "./pages/admin/ReviewArts";
 import { ManageArtworks as AdminManageArtworks } from "./pages/admin/AdminManageArtworks";
 import AdminDashboard from "./pages/dashboard/AdminDashboard";
@@ -149,6 +150,7 @@ const App = () => (
               />
 
               <Route path="recent-decisions" element={<ProfessorAudit />} />
+               <Route path="all-artifacts" element={<ProfessorAllArtifacts />} />
 
             {/*} <Route path="recent-decisions" element={<ProfessorAudit />} /> */}
             </Route>

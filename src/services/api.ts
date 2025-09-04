@@ -1200,6 +1200,40 @@ export const professorListPendingArtifacts = async (): Promise<
   return res.data;
 };
 
+// services/api.ts
+export interface ProfessorAllArtifactItem {
+  artifactId: string;
+  title: string;
+  status: string;
+  submissionDate: string;
+  curatorId: number;
+  curatorName: string;
+  assignedProfessorId: number | null;
+  assignedProfessorName: string | null;
+  canReview: boolean;
+}
+
+export interface PageResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export const professorListAllArtifacts = async (
+  page = 0,
+  size = 10,
+  q?: string,
+  status: "pending" | "accepted" | "rejected" | "all" = "all"
+): Promise<PageResponse<ProfessorAllArtifactItem>> => {
+  const res = await api.get<PageResponse<ProfessorAllArtifactItem>>(
+    "/professor/dashboard/all-artifacts",
+    { params: { page, size, q, status } }
+  );
+  return res.data;
+};
+
+
 /* ----------------------- Professor: Curator Applications ----------------------- */
 
 export interface ProfessorPendingCurator {

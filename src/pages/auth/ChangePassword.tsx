@@ -169,14 +169,7 @@ const form = useForm<FormData>({
                   autoComplete="new-password"
                 />
 
-                <div className="text-center">
-                  <Link
-                    to="/forgot-password"
-                    className="text-sm text-primary hover:text-primary/80 underline"
-                  >
-                    Forgot your password?
-                  </Link>
-                </div>
+               
 
                 <div className="flex flex-col sm:flex-row gap-4 pt-4">
                   <Button

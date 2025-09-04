@@ -217,7 +217,7 @@ export default function UpgradeCurator() {
         title: "Application Submitted",
         description: "Your curator application has been submitted successfully. We'll review it within 5–7 days.",
       });
-      navigate("/Index");
+      navigate("/");
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||

@@ -89,6 +89,16 @@ public interface UserArtifactRepository extends JpaRepository<UserArtifact, Inte
 
 		boolean existsByArtifactId(String artifactId);
 
+		boolean existsByArtifactIdAndStatus(String id, ApplicationStatus accepted);
+
+		Collection<? extends UserArtifact> findByUserIdIn(List<Integer> matchedCuratorIds);
+
+		Collection<? extends UserArtifact> findByUserIdInAndStatus(List<Integer> matchedCuratorIds,
+				ApplicationStatus statusEnum);
+
+		Collection<? extends UserArtifact> findByArtifactIdInAndStatus(List<String> matchedArtIds,
+				ApplicationStatus statusEnum);
+
 }
 
 
